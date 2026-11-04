@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>AI Log Analyzer · Observability Dashboard</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link
+		href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
+		rel="stylesheet">
+	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+	<style>
+		:root {
+			--bg: #f4f6fb;
+			--bg-2: #eef2f8;
+			--card: rgba(255, 255, 255, 0.92);
+			--card-solid: #f8fafc;
+			--border: rgba(15, 23, 42, 0.07);
+			--border-strong: rgba(15, 23, 42, 0.12);
+			--text: #0f172a;
+			--text-dim: #475569;
+			--text-faint: #7c879a;
+			--total: #6366f1;
+			--info: #10b981;
+			--warn: #d97706;
+			--error: #ef4444;
+			--accent: #2563eb;
+			--radius: 18px;
+			--shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -16px rgba(15, 23, 42, 0.14);
+		}
+
+		* {
+			box-sizing: border-box;
+			margin: 0;
+			padding: 0;
+		}
+
+		html,
+		body {
+			background: var(--bg);
+		}
+
+		body {
+			font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			color: var(--text);
+			min-height: 100vh;
+			-webkit-font-smoothing: antialiased;
+			background:
+				radial-gradient(1200px 600px at 10% -10%, rgba(99, 102, 241, 0.09), transparent 60%),
+				radial-gradient(900px 500px at 100% 0%, rgba(14, 165, 233, 0.07), transparent 60%),
+				radial-gradient(800px 600px at 50% 120%, rgba(244, 63, 94, 0.04), transparent 60%),
+				var(--bg);
+			background-attachment: fixed;
+		}
+
+		/* subtle grid texture */
+		body::before {
+			content: "";
+			position: fixed;
+			inset: 0;
+			background-image:
+				linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+				linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+			background-size: 44px 44px;
+			mask-image: radial-gradient(ellipse at top, #000 30%, transparent 75%);
+			pointer-events: none;
+			z-index: 0;
+		}
+
+		.mono {
+			font-family: 'JetBrains Mono', ui-monospace, monospace;
+		}
+
+		/* ============ TOP BAR ============ */
+		.topbar {
+			position: sticky;
+			top: 0;
+			z-index: 20;
+			backdrop-filter: blur(14px) saturate(140%);
+			-webkit-backdrop-filter: blur(14px) saturate(140%);
+			background: rgba(255, 255, 255, 0.82);
+			border-bottom: 1px solid var(--border);
+		}
+
+		.topbar-inner {
+			max-width: 1440px;
+			margin: 0 auto;
+			padding: 14px 32px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 16px;
+		}
+
+		.brand {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+		}
+
+		.brand-logo {
+			width: 38px;
+			height: 38px;
+			border-radius: 11px;
+			display: grid;
+			place-items: center;
+			background: linear-gradient(135deg, #6366f1, #06b6d4);
+			box-shadow: 0 8px 20px -8px rgba(99, 102, 241, 0.55);
+		}
+
+		.brand-title {
+			font-weight: 700;
+			font-size: 16px;
+			letter-spacing: -0.01em;
+		}
+
+		.brand-sub {
+			font-size: 12px;
+			color: var(--text-faint);
+			margin-top: 1px;
+		}
+
+		.topbar-actions {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+		}
+
+		.live-pill {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+			font-size: 12px;
+			font-weight: 600;
+			color: #047857;
+			padding: 6px 12px;
+			border-radius: 999px;
+			background: rgba(16, 185, 129, 0.08);
+			border: 1px solid rgba(16, 185, 129, 0.25);
+		}
+
+		.live-dot {
+			width: 7px;
+			height: 7px;
+			border-radius: 50%;
+			background: var(--info);
+			box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7);
+			animation: pulse 2s infinite;
+		}
+
+		@keyframes pulse {
+			0% {
+				box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+			}
+
+			70% {
+				box-shadow: 0 0 0 8px rgba(52, 211, 153, 0);
+			}
+
+			100% {
+				box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+			}
+		}
+
+		.timestamp {
+			font-size: 12px;
+			color: var(--text-faint);
+		}
+
+		.btn {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+			font: inherit;
+			font-size: 13px;
+			font-weight: 600;
+			color: var(--text);
+			text-decoration: none;
+			cursor: pointer;
+			padding: 8px 14px;
+			border-radius: 10px;
+			background: #ffffff;
+			border: 1px solid var(--border-strong);
+			box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+			transition: all .2s ease;
+		}
+
+		.btn:hover {
+			background: #f8fafc;
+			border-color: rgba(15, 23, 42, 0.2);
+		}
+
+		.btn svg {
+			transition: transform .5s ease;
+		}
+
+		.btn:hover svg.spin {
+			transform: rotate(180deg);
+		}
+
+		/* ============ LAYOUT ============ */
+		.container {
+			position: relative;
+			z-index: 1;
+			max-width: 1440px;
+			margin: 0 auto;
+			padding: 28px 32px 48px;
+		}
+
+		.page-head {
+			display: flex;
+			align-items: flex-end;
+			justify-content: space-between;
+			margin-bottom: 22px;
+			gap: 16px;
+			flex-wrap: wrap;
+		}
+
+		.page-head h1 {
+			font-size: 26px;
+			font-weight: 800;
+			letter-spacing: -0.025em;
+		}
+
+		.page-head p {
+			color: var(--text-dim);
+			font-size: 14px;
+			margin-top: 4px;
+		}
+
+		.grid {
+			display: grid;
+			grid-template-columns: repeat(12, 1fr);
+			gap: 20px;
+		}
+
+		.span-3 {
+			grid-column: span 3;
+		}
+
+		.span-4 {
+			grid-column: span 4;
+		}
+
+		.span-5 {
+			grid-column: span 5;
+		}
+
+		.span-7 {
+			grid-column: span 7;
+		}
+
+		.span-8 {
+			grid-column: span 8;
+		}
+
+		.span-12 {
+			grid-column: span 12;
+		}
+
+		.card {
+			background: var(--card);
+			border: 1px solid var(--border);
+			border-radius: var(--radius);
+			box-shadow: var(--shadow);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
+			overflow: hidden;
+			opacity: 0;
+			transform: translateY(10px);
+			animation: rise .6s cubic-bezier(.2, .7, .2, 1) forwards;
+		}
+
+		@keyframes rise {
+			to {
+				opacity: 1;
+				transform: none;
+			}
+		}
+
+		.card-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			padding: 18px 22px 0;
+		}
+
+		.card-title {
+			font-size: 14px;
+			font-weight: 600;
+			letter-spacing: -0.005em;
+		}
+
+		.card-sub {
+			font-size: 12px;
+			color: var(--text-faint);
+			margin-top: 3px;
+		}
+
+		.card-body {
+			padding: 18px 22px 22px;
+		}
+
+		.chip {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			font-size: 11.5px;
+			font-weight: 600;
+			color: var(--text-dim);
+			padding: 5px 10px;
+			border-radius: 8px;
+			background: #f8fafc;
+			border: 1px solid var(--border);
+			white-space: nowrap;
+		}
+
+		/* ============ KPI CARDS ============ */
+		.kpi {
+			position: relative;
+			padding: 20px 22px;
+		}
+
+		.kpi::after {
+			content: "";
+			position: absolute;
+			inset: 0 0 auto 0;
+			height: 2px;
+			background: linear-gradient(90deg, transparent, var(--c), transparent);
+			opacity: .8;
+		}
+
+		.kpi::before {
+			content: "";
+			position: absolute;
+			width: 180px;
+			height: 180px;
+			right: -60px;
+			top: -80px;
+			background: radial-gradient(circle, var(--c), transparent 70%);
+			opacity: .10;
+			pointer-events: none;
+		}
+
+		.kpi-top {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.kpi-label {
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--text-dim);
+			text-transform: uppercase;
+			letter-spacing: .08em;
+		}
+
+		.kpi-icon {
+			width: 36px;
+			height: 36px;
+			border-radius: 10px;
+			display: grid;
+			place-items: center;
+			color: var(--c);
+			background: color-mix(in srgb, var(--c) 14%, transparent);
+			border: 1px solid color-mix(in srgb, var(--c) 28%, transparent);
+		}
+
+		.kpi-value {
+			font-size: 34px;
+			font-weight: 800;
+			letter-spacing: -0.03em;
+			margin-top: 14px;
+			line-height: 1;
+			font-variant-numeric: tabular-nums;
+		}
+
+		.kpi-foot {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-top: 14px;
+			font-size: 12px;
+			color: var(--text-faint);
+		}
+
+		.kpi-share {
+			font-weight: 700;
+			color: var(--c);
+			font-variant-numeric: tabular-nums;
+		}
+
+		.meter {
+			height: 5px;
+			border-radius: 999px;
+			background: rgba(15, 23, 42, 0.06);
+			margin-top: 10px;
+			overflow: hidden;
+		}
+
+		.meter>span {
+			display: block;
+			height: 100%;
+			width: 0;
+			border-radius: inherit;
+			background: linear-gradient(90deg, color-mix(in srgb, var(--c) 55%, transparent), var(--c));
+			transition: width 1.2s cubic-bezier(.2, .7, .2, 1);
+		}
+
+		/* ============ HEALTH GAUGE ============ */
+		.health {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+		}
+
+		.gauge {
+			position: relative;
+			width: 220px;
+			height: 220px;
+			margin: 6px auto 0;
+		}
+
+		.gauge svg {
+			transform: rotate(-90deg);
+		}
+
+		.gauge-track {
+			stroke: rgba(15, 23, 42, 0.06);
+		}
+
+		.gauge-bar {
+			transition: stroke-dashoffset 1.6s cubic-bezier(.2, .7, .2, 1);
+			filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--gc) 35%, transparent));
+		}
+
+		.gauge-center {
+			position: absolute;
+			inset: 0;
+			display: grid;
+			place-items: center;
+			text-align: center;
+		}
+
+		.gauge-score {
+			font-size: 40px;
+			font-weight: 800;
+			letter-spacing: -0.04em;
+			line-height: 1;
+			font-variant-numeric: tabular-nums;
+		}
+
+		.gauge-score small {
+			font-size: 14px;
+			margin-left: 2px;
+			color: var(--text-faint);
+			font-weight: 600;
+			letter-spacing: 0;
+		}
+
+		.gauge-label {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: .12em;
+			color: var(--text-faint);
+			margin-top: 8px;
+		}
+
+		.status-pill {
+			display: inline-flex;
+			align-items: center;
+			gap: 7px;
+			font-size: 12px;
+			font-weight: 700;
+			padding: 6px 12px;
+			border-radius: 999px;
+			margin-top: 6px;
+			color: var(--gc);
+			background: color-mix(in srgb, var(--gc) 12%, transparent);
+			border: 1px solid color-mix(in srgb, var(--gc) 30%, transparent);
+		}
+
+		.status-pill i {
+			width: 7px;
+			height: 7px;
+			border-radius: 50%;
+			background: var(--gc);
+		}
+
+		.health-stats {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 12px;
+			width: 100%;
+			margin-top: 20px;
+		}
+
+		.stat-box {
+			padding: 12px 14px;
+			border-radius: 12px;
+			background: #f8fafc;
+			border: 1px solid var(--border);
+		}
+
+		.stat-box .k {
+			font-size: 11px;
+			color: var(--text-faint);
+			text-transform: uppercase;
+			letter-spacing: .08em;
+			font-weight: 600;
+		}
+
+		.stat-box .v {
+			font-size: 20px;
+			font-weight: 700;
+			margin-top: 4px;
+			font-variant-numeric: tabular-nums;
+		}
+
+		/* ============ CHARTS ============ */
+		.chart-wrap {
+			position: relative;
+			height: 300px;
+		}
+
+		.chart-wrap.tall {
+			height: 320px;
+		}
+
+		.donut-wrap {
+			position: relative;
+			height: 240px;
+		}
+
+		.donut-center {
+			position: absolute;
+			inset: 0;
+			display: grid;
+			place-items: center;
+			text-align: center;
+			pointer-events: none;
+		}
+
+		.donut-center .v {
+			font-size: 28px;
+			font-weight: 800;
+			letter-spacing: -0.03em;
+			font-variant-numeric: tabular-nums;
+		}
+
+		.donut-center .k {
+			font-size: 11px;
+			color: var(--text-faint);
+			text-transform: uppercase;
+			letter-spacing: .1em;
+			margin-top: 2px;
+		}
+
+		.legend {
+			display: grid;
+			gap: 10px;
+			margin-top: 18px;
+		}
+
+		.legend-row {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			font-size: 13px;
+		}
+
+		.legend-row .sw {
+			width: 10px;
+			height: 10px;
+			border-radius: 3px;
+			flex: none;
+		}
+
+		.legend-row .name {
+			color: var(--text-dim);
+			flex: 1;
+		}
+
+		.legend-row .num {
+			font-weight: 600;
+			font-variant-numeric: tabular-nums;
+		}
+
+		.legend-row .pct {
+			color: var(--text-faint);
+			font-size: 12px;
+			width: 52px;
+			text-align: right;
+			font-variant-numeric: tabular-nums;
+		}
+
+		/* ============ INCIDENTS ============ */
+		.incident-list {
+			display: grid;
+			gap: 10px;
+			max-height: 420px;
+			overflow-y: auto;
+			padding-right: 4px;
+		}
+
+		.incident {
+			--sc: var(--error);
+			position: relative;
+			display: flex;
+			align-items: center;
+			gap: 14px;
+			padding: 14px 16px 14px 18px;
+			border-radius: 12px;
+			background: linear-gradient(90deg, color-mix(in srgb, var(--sc) 6%, #fff), #fff 60%);
+			border: 1px solid var(--border);
+			transition: transform .2s ease, border-color .2s ease;
+		}
+
+		.incident:hover {
+			transform: translateX(3px);
+			border-color: color-mix(in srgb, var(--sc) 35%, transparent);
+		}
+
+		.incident::before {
+			content: "";
+			position: absolute;
+			left: 0;
+			top: 10px;
+			bottom: 10px;
+			width: 3px;
+			border-radius: 0 3px 3px 0;
+			background: var(--sc);
+		}
+
+		.incident-icon {
+			width: 34px;
+			height: 34px;
+			border-radius: 9px;
+			flex: none;
+			display: grid;
+			place-items: center;
+			color: var(--sc);
+			background: color-mix(in srgb, var(--sc) 10%, transparent);
+		}
+
+		.incident-main {
+			flex: 1;
+			min-width: 0;
+		}
+
+		.incident-name {
+			font-size: 13.5px;
+			font-weight: 600;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.incident-meta {
+			font-size: 12px;
+			color: var(--text-faint);
+			margin-top: 3px;
+		}
+
+		.incident-meta strong {
+			color: var(--text);
+			font-weight: 600;
+			font-variant-numeric: tabular-nums;
+		}
+
+		.sev {
+			font-size: 10.5px;
+			font-weight: 800;
+			letter-spacing: .08em;
+			text-transform: uppercase;
+			padding: 4px 9px;
+			border-radius: 6px;
+			flex: none;
+			color: var(--sc);
+			background: color-mix(in srgb, var(--sc) 14%, transparent);
+			border: 1px solid color-mix(in srgb, var(--sc) 32%, transparent);
+		}
+
+		.sev-critical {
+			--sc: #e11d48;
+		}
+
+		.sev-high {
+			--sc: #ef4444;
+		}
+
+		.sev-medium {
+			--sc: #d97706;
+		}
+
+		.sev-low {
+			--sc: #2563eb;
+		}
+
+		.empty {
+			text-align: center;
+			color: var(--text-faint);
+			font-size: 13px;
+			padding: 36px 0;
+		}
+
+		/* ============ TABLE ============ */
+		.search {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding: 7px 12px;
+			border-radius: 10px;
+			background: #f8fafc;
+			border: 1px solid var(--border-strong);
+			color: var(--text-faint);
+			transition: border-color .2s ease;
+		}
+
+		.search:focus-within {
+			border-color: rgba(37, 99, 235, 0.5);
+			background: #fff;
+			box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+		}
+
+		.search input {
+			background: transparent;
+			border: none;
+			outline: none;
+			color: var(--text);
+			font: inherit;
+			font-size: 13px;
+			width: 170px;
+		}
+
+		.search input::placeholder {
+			color: var(--text-faint);
+		}
+
+		.table-wrap {
+			max-height: 420px;
+			overflow-y: auto;
+		}
+
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			font-size: 13px;
+		}
+
+		thead th {
+			position: sticky;
+			top: 0;
+			z-index: 1;
+			background: var(--card-solid);
+			text-align: left;
+			font-size: 11px;
+			font-weight: 600;
+			color: var(--text-faint);
+			text-transform: uppercase;
+			letter-spacing: .08em;
+			padding: 10px 14px;
+			border-bottom: 1px solid var(--border);
+			cursor: pointer;
+			user-select: none;
+			white-space: nowrap;
+		}
+
+		thead th.no-sort {
+			cursor: default;
+		}
+
+		thead th .arrow {
+			opacity: .4;
+			margin-left: 4px;
+		}
+
+		tbody td {
+			padding: 12px 14px;
+			border-bottom: 1px solid var(--border);
+			vertical-align: middle;
+		}
+
+		tbody tr {
+			transition: background .15s ease;
+		}
+
+		tbody tr:hover {
+			background: rgba(15, 23, 42, 0.025);
+		}
+
+		tbody tr:last-child td {
+			border-bottom: none;
+		}
+
+		.etype {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			font-weight: 500;
+		}
+
+		.etype .rank {
+			width: 22px;
+			height: 22px;
+			border-radius: 6px;
+			flex: none;
+			display: grid;
+			place-items: center;
+			font-size: 11px;
+			font-weight: 700;
+			color: var(--text-dim);
+			background: rgba(15, 23, 42, 0.05);
+		}
+
+		.count-cell {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			min-width: 180px;
+		}
+
+		.count-cell .n {
+			font-weight: 700;
+			font-variant-numeric: tabular-nums;
+			width: 52px;
+		}
+
+		.share-bar {
+			flex: 1;
+			height: 6px;
+			border-radius: 999px;
+			background: rgba(15, 23, 42, 0.06);
+			overflow: hidden;
+		}
+
+		.share-bar span {
+			display: block;
+			height: 100%;
+			width: 0;
+			border-radius: inherit;
+			background: linear-gradient(90deg, #fb7185, #f43f5e);
+			transition: width 1s cubic-bezier(.2, .7, .2, 1);
+		}
+
+		.link-btn {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--accent);
+			text-decoration: none;
+			padding: 6px 11px;
+			border-radius: 8px;
+			border: 1px solid rgba(37, 99, 235, 0.22);
+			background: rgba(37, 99, 235, 0.06);
+			transition: all .2s ease;
+		}
+
+		.link-btn:hover {
+			background: #2563eb;
+			color: #fff;
+			border-color: #2563eb;
+		}
+
+		.link-btn svg {
+			transition: transform .2s ease;
+		}
+
+		.link-btn:hover svg {
+			transform: translateX(2px);
+		}
+
+		/* scrollbars */
+		::-webkit-scrollbar {
+			width: 8px;
+			height: 8px;
+		}
+
+		::-webkit-scrollbar-thumb {
+			background: rgba(15, 23, 42, 0.14);
+			border-radius: 8px;
+		}
+
+		::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		footer {
+			text-align: center;
+			color: var(--text-faint);
+			font-size: 12px;
+			margin-top: 32px;
+		}
+
+		/* ============ RESPONSIVE ============ */
+		@media (max-width: 1180px) {
+			.span-3 {
+				grid-column: span 6;
+			}
+
+			.span-4,
+			.span-5,
+			.span-7,
+			.span-8 {
+				grid-column: span 12;
+			}
+		}
+
+		@media (max-width: 640px) {
+			.span-3 {
+				grid-column: span 12;
+			}
+
+			.container,
+			.topbar-inner {
+				padding-left: 16px;
+				padding-right: 16px;
+			}
+
+			.timestamp,
+			.brand-sub {
+				display: none;
+			}
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+
+			*,
+			*::before,
+			*::after {
+				animation: none !important;
+				transition: none !important;
+			}
+
+			.card {
+				opacity: 1;
+				transform: none;
+			}
+		}
+	</style>
+</head>
+
+<body>
+
+	<!-- ============ TOP BAR ============ -->
+	<header class="topbar">
+		<div class="topbar-inner">
+			<div class="brand">
+				<div class="brand-logo">
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"
+						stroke-linecap="round" stroke-linejoin="round">
+						<path d="M3 12h4l3-8 4 16 3-8h4" />
+					</svg>
+				</div>
+				<div>
+					<div class="brand-title">AI Log Analyzer</div>
+					<div class="brand-sub">Observability &amp; Incident Intelligence</div>
+				</div>
+			</div>
+			<div class="topbar-actions">
+				<span class="live-pill"><span class="live-dot"></span>Live</span>
+				<span class="timestamp mono" id="timestamp">—</span>
+				<a class="btn" href="javascript:location.reload()">
+					<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+						stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 12a9 9 0 1 1-2.64-6.36" />
+						<path d="M21 3v6h-6" />
+					</svg>
+					Refresh
+				</a>
+			</div>
+		</div>
+	</header>
+
+	<main class="container">
+
+		<div class="page-head">
+			<div>
+				<h1>System Overview</h1>
+				<p>Real-time analysis of application logs, error patterns and critical incidents.</p>
+			</div>
+			<span class="chip" id="analysisChip">
+				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+					stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 3l1.9 5.8L20 10l-5 3.7L16.2 20 12 16.6 7.8 20 9 13.7 4 10l6.1-1.2z" />
+				</svg>
+				AI-powered analysis
+			</span>
+		</div>
+
+		<div class="grid">
+
+			<!-- ============ KPI CARDS ============ -->
+			<section class="card kpi span-3" style="--c: var(--total); animation-delay: .00s">
+				<div class="kpi-top">
+					<span class="kpi-label">Total Logs</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+							stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M4 6h16M4 12h16M4 18h10" />
+						</svg></span>
+				</div>
+				<div class="kpi-value" data-count th:text="${report.totalLogs}">12480</div>
+				<div class="meter"><span data-pct="100"></span></div>
+				<div class="kpi-foot"><span>Events ingested</span><span class="kpi-share">100%</span></div>
+			</section>
+
+			<section class="card kpi span-3" style="--c: var(--info); animation-delay: .06s">
+				<div class="kpi-top">
+					<span class="kpi-label">Info</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+							stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="9" />
+							<path d="M12 11v5M12 8h.01" />
+						</svg></span>
+				</div>
+				<div class="kpi-value" data-count th:text="${report.infoLogs}">10950</div>
+				<div class="meter"><span id="infoMeter"></span></div>
+				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="infoShare">—</span></div>
+			</section>
+
+			<section class="card kpi span-3" style="--c: var(--warn); animation-delay: .12s">
+				<div class="kpi-top">
+					<span class="kpi-label">Warnings</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+							stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 3l9.5 17h-19z" />
+							<path d="M12 10v4M12 17h.01" />
+						</svg></span>
+				</div>
+				<div class="kpi-value" data-count th:text="${report.warnLogs}">1120</div>
+				<div class="meter"><span id="warnMeter"></span></div>
+				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="warnShare">—</span></div>
+			</section>
+
+			<section class="card kpi span-3" style="--c: var(--error); animation-delay: .18s">
+				<div class="kpi-top">
+					<span class="kpi-label">Errors</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+							stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="9" />
+							<path d="M15 9l-6 6M9 9l6 6" />
+						</svg></span>
+				</div>
+				<div class="kpi-value" data-count th:text="${report.errorLogs}">410</div>
+				<div class="meter"><span id="errorMeter"></span></div>
+				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="errorShare">—</span></div>
+			</section>
+
+			<!-- ============ HEALTH SCORE ============ -->
+			<section class="card span-4" style="animation-delay: .24s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">System Health Score</div>
+						<div class="card-sub">Weighted by error &amp; warning density</div>
+					</div>
+				</div>
+				<div class="card-body health" id="healthCard">
+					<div class="gauge">
+						<svg width="220" height="220" viewBox="0 0 220 220">
+							<defs>
+								<linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="1">
+									<stop offset="0%" id="gStop1" stop-color="#34d399" />
+									<stop offset="100%" id="gStop2" stop-color="#22d3ee" />
+								</linearGradient>
+							</defs>
+							<circle class="gauge-track" cx="110" cy="110" r="92" fill="none" stroke-width="14" />
+							<circle class="gauge-bar" id="gaugeBar" cx="110" cy="110" r="92" fill="none"
+								stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" />
+						</svg>
+						<div class="gauge-center">
+							<div>
+								<div class="gauge-score"><span
+										th:text="${#numbers.formatDecimal(report.healthScore,1,2)}">96.71</span><small>/100</small>
+								</div>
+								<div class="gauge-label">Health Index</div>
+							</div>
+						</div>
+					</div>
+					<span class="status-pill" id="statusPill"><i></i><span id="statusText">Healthy</span></span>
+					<div class="health-stats">
+						<div class="stat-box">
+							<div class="k">Error Rate</div>
+							<div class="v" id="errorRate" style="color: var(--error)">—</div>
+						</div>
+						<div class="stat-box">
+							<div class="k">Warn Rate</div>
+							<div class="v" id="warnRate" style="color: var(--warn)">—</div>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- ============ ERROR TREND ============ -->
+			<section class="card span-8" style="animation-delay: .30s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Error Trend Timeline</div>
+						<div class="card-sub">Error volume aggregated by hour</div>
+					</div>
+					<span class="chip" id="peakChip">Peak —</span>
+				</div>
+				<div class="card-body">
+					<div class="chart-wrap tall"><canvas id="trendChart"></canvas></div>
+				</div>
+			</section>
+
+			<!-- ============ DISTRIBUTION ============ -->
+			<section class="card span-4" style="animation-delay: .36s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Log Level Distribution</div>
+						<div class="card-sub">Share of events by severity</div>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="donut-wrap">
+						<canvas id="logPieChart"></canvas>
+						<div class="donut-center">
+							<div>
+								<div class="v" id="donutTotal">—</div>
+								<div class="k">Total Events</div>
+							</div>
+						</div>
+					</div>
+					<div class="legend" id="donutLegend"></div>
+				</div>
+			</section>
+
+			<!-- ============ TOP ERROR CATEGORIES ============ -->
+			<section class="card span-8" style="animation-delay: .42s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Top Error Categories</div>
+						<div class="card-sub">Most frequent exception types</div>
+					</div>
+					<span class="chip" id="categoryChip">— categories</span>
+				</div>
+				<div class="card-body">
+					<div class="chart-wrap"><canvas id="errorBarChart"></canvas></div>
+				</div>
+			</section>
+
+			<!-- ============ CRITICAL INCIDENTS ============ -->
+			<section class="card span-5" style="animation-delay: .48s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Top Critical Incidents</div>
+						<div class="card-sub">Prioritised by severity and frequency</div>
+					</div>
+					<span class="chip"
+						style="color:#e11d48; border-color: rgba(225,29,72,.25); background: rgba(225,29,72,.06)"
+						id="incidentChip">Needs attention</span>
+				</div>
+				<div class="card-body">
+					<div class="incident-list" id="incidentList">
+						<div class="incident" th:each="incident : ${report.criticalIncidents}">
+							<div class="incident-icon">
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+									stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M12 3l9.5 17h-19z" />
+									<path d="M12 10v4M12 17h.01" />
+								</svg>
+							</div>
+							<div class="incident-main">
+								<div class="incident-name mono" th:text="${incident.errorType}">
+									DatabaseConnectionException</div>
+								<div class="incident-meta">Occurrences: <strong th:text="${incident.count}">142</strong>
+								</div>
+							</div>
+							<span class="sev" th:text="${incident.severity}">CRITICAL</span>
+						</div>
+						<!-- Preview-only rows: removed by Thymeleaf at render time -->
+						<div class="incident" th:remove="all">
+							<div class="incident-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+									stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+									stroke-linejoin="round">
+									<path d="M12 3l9.5 17h-19z" />
+									<path d="M12 10v4M12 17h.01" />
+								</svg></div>
+							<div class="incident-main">
+								<div class="incident-name mono">NullPointerException</div>
+								<div class="incident-meta">Occurrences: <strong>98</strong></div>
+							</div>
+							<span class="sev">HIGH</span>
+						</div>
+						<div class="incident" th:remove="all">
+							<div class="incident-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+									stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+									stroke-linejoin="round">
+									<path d="M12 3l9.5 17h-19z" />
+									<path d="M12 10v4M12 17h.01" />
+								</svg></div>
+							<div class="incident-main">
+								<div class="incident-name mono">TimeoutException</div>
+								<div class="incident-meta">Occurrences: <strong>71</strong></div>
+							</div>
+							<span class="sev">HIGH</span>
+						</div>
+						<div class="incident" th:remove="all">
+							<div class="incident-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+									stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+									stroke-linejoin="round">
+									<path d="M12 3l9.5 17h-19z" />
+									<path d="M12 10v4M12 17h.01" />
+								</svg></div>
+							<div class="incident-main">
+								<div class="incident-name mono">AuthenticationException</div>
+								<div class="incident-meta">Occurrences: <strong>44</strong></div>
+							</div>
+							<span class="sev">MEDIUM</span>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- ============ ERROR BREAKDOWN TABLE ============ -->
+			<section class="card span-7" style="animation-delay: .54s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Error Breakdown</div>
+						<div class="card-sub">Drill down into individual error types</div>
+					</div>
+					<label class="search">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+							stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="11" cy="11" r="7" />
+							<path d="M20 20l-3.5-3.5" />
+						</svg>
+						<input type="text" id="tableSearch" placeholder="Filter error types…">
+					</label>
+				</div>
+				<div class="card-body">
+					<div class="table-wrap">
+						<table id="errorTable">
+							<thead>
+								<tr>
+									<th data-sort="text">Error Type<span class="arrow">↕</span></th>
+									<th data-sort="num">Occurrences<span class="arrow">↕</span></th>
+									<th class="no-sort" style="text-align:right">Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr th:each="entry : ${report.errorMap}" data-count="142"
+									th:attr="data-count=${entry.value}">
+									<td>
+										<div class="etype"><span class="rank">#</span><span class="mono"
+												th:text="${entry.key}">DatabaseConnectionException</span></div>
+									</td>
+									<td>
+										<div class="count-cell"><span class="n" th:text="${entry.value}">142</span>
+											<div class="share-bar"><span></span></div>
+										</div>
+									</td>
+									<td style="text-align:right">
+										<a class="link-btn" href="#" th:href="@{/error-details(type=${entry.key})}">View
+											Logs
+											<svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+												stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+												stroke-linejoin="round">
+												<path d="M5 12h14M13 6l6 6-6 6" />
+											</svg>
+										</a>
+									</td>
+								</tr>
+								<!-- Preview-only rows -->
+								<tr th:remove="all" data-count="98">
+									<td>
+										<div class="etype"><span class="rank">#</span><span
+												class="mono">NullPointerException</span></div>
+									</td>
+									<td>
+										<div class="count-cell"><span class="n">98</span>
+											<div class="share-bar"><span></span></div>
+										</div>
+									</td>
+									<td style="text-align:right"><a class="link-btn" href="#">View Logs <svg width="12"
+												height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+												stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+												<path d="M5 12h14M13 6l6 6-6 6" />
+											</svg></a></td>
+								</tr>
+								<tr th:remove="all" data-count="71">
+									<td>
+										<div class="etype"><span class="rank">#</span><span
+												class="mono">TimeoutException</span></div>
+									</td>
+									<td>
+										<div class="count-cell"><span class="n">71</span>
+											<div class="share-bar"><span></span></div>
+										</div>
+									</td>
+									<td style="text-align:right"><a class="link-btn" href="#">View Logs <svg width="12"
+												height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+												stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+												<path d="M5 12h14M13 6l6 6-6 6" />
+											</svg></a></td>
+								</tr>
+								<tr th:remove="all" data-count="44">
+									<td>
+										<div class="etype"><span class="rank">#</span><span
+												class="mono">AuthenticationException</span></div>
+									</td>
+									<td>
+										<div class="count-cell"><span class="n">44</span>
+											<div class="share-bar"><span></span></div>
+										</div>
+									</td>
+									<td style="text-align:right"><a class="link-btn" href="#">View Logs <svg width="12"
+												height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+												stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+												<path d="M5 12h14M13 6l6 6-6 6" />
+											</svg></a></td>
+								</tr>
+								<tr th:remove="all" data-count="33">
+									<td>
+										<div class="etype"><span class="rank">#</span><span
+												class="mono">IllegalStateException</span></div>
+									</td>
+									<td>
+										<div class="count-cell"><span class="n">33</span>
+											<div class="share-bar"><span></span></div>
+										</div>
+									</td>
+									<td style="text-align:right"><a class="link-btn" href="#">View Logs <svg width="12"
+												height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+												stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+												<path d="M5 12h14M13 6l6 6-6 6" />
+											</svg></a></td>
+								</tr>
+								<tr th:remove="all" data-count="22">
+									<td>
+										<div class="etype"><span class="rank">#</span><span
+												class="mono">FileNotFoundException</span></div>
+									</td>
+									<td>
+										<div class="count-cell"><span class="n">22</span>
+											<div class="share-bar"><span></span></div>
+										</div>
+									</td>
+									<td style="text-align:right"><a class="link-btn" href="#">View Logs <svg width="12"
+												height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+												stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+												<path d="M5 12h14M13 6l6 6-6 6" />
+											</svg></a></td>
+								</tr>
+							</tbody>
+						</table>
+						<div class="empty" id="tableEmpty" style="display:none">No error types match your filter.</div>
+					</div>
+				</div>
+			</section>
+
+		</div>
+
+		<footer>AI Log Analyzer · Generated <span id="footerTime"></span></footer>
+	</main>
+
+	<script th:inline="javascript">
+		/*<![CDATA[*/
+
+		// ==========================================================
+		// DATA (Thymeleaf natural templating: the values after each
+		// comment are preview defaults and are replaced at render time)
+		// ==========================================================
+		const totalCount = /*[[${report.totalLogs}]]*/ 12480;
+		const infoCount = /*[[${report.infoLogs}]]*/ 10950;
+		const warnCount = /*[[${report.warnLogs}]]*/ 1120;
+		const errorCount = /*[[${report.errorLogs}]]*/ 410;
+		const healthScore = /*[[${report.healthScore}]]*/ 96.71;
+
+		const errorLabels = /*[[${report.errorMap.keySet()}]]*/["DatabaseConnectionException", "NullPointerException", "TimeoutException", "AuthenticationException", "IllegalStateException", "FileNotFoundException"];
+		const errorValues = /*[[${report.errorMap.values()}]]*/[142, 98, 71, 44, 33, 22];
+
+		const trendLabels = /*[[${report.hourlyErrors.keySet()}]]*/["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"];
+		const trendValues = /*[[${report.hourlyErrors.values()}]]*/[4, 3, 2, 2, 1, 3, 6, 9, 14, 18, 22, 25, 21, 27, 38, 31, 26, 24, 19, 16, 12, 9, 7, 5];
+
+		// ==========================================================
+		// HELPERS
+		// ==========================================================
+		const C = { total: '#6366f1', info: '#10b981', warn: '#f59e0b', error: '#ef4444', text: '#64748b', faint: '#94a3b8', grid: 'rgba(15,23,42,0.06)' };
+		const nf = new Intl.NumberFormat('en-US');
+		const total = Number(totalCount) || (Number(infoCount) + Number(warnCount) + Number(errorCount)) || 0;
+		const pct = (v) => total > 0 ? (v / total) * 100 : 0;
+		const fmtPct = (v) => (v < 10 ? v.toFixed(2) : v.toFixed(1)) + '%';
+
+		// timestamp
+		const now = new Date();
+		const stamp = now.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+		document.getElementById('timestamp').textContent = 'Updated ' + stamp;
+		document.getElementById('footerTime').textContent = stamp;
+
+		// ==========================================================
+		// KPI COUNT-UP + METERS
+		// ==========================================================
+		document.querySelectorAll('[data-count]').forEach(el => {
+			if (el.tagName === 'TR') return;
+			const target = parseFloat(String(el.textContent).replace(/[^0-9.\-]/g, '')) || 0;
+			const dur = 1100, start = performance.now();
+			const tick = (t) => {
+				const p = Math.min(1, (t - start) / dur);
+				const eased = 1 - Math.pow(1 - p, 3);
+				el.textContent = nf.format(Math.round(target * eased));
+				if (p < 1) requestAnimationFrame(tick);
+			};
+			requestAnimationFrame(tick);
+		});
+
+		[  ['info', infoCount], ['warn', warnCount], ['error', errorCount]  ].forEach(([k, v]) => {
+			const p = pct(v);
+			document.getElementById(k + 'Share').textContent = fmtPct(p);
+			requestAnimationFrame(() => setTimeout(() => {
+				document.getElementById(k + 'Meter').style.width = Math.max(p, 1.5) + '%';
+			}, 150));
+		});
+		document.querySelectorAll('[data-pct]').forEach(el => setTimeout(() => el.style.width = el.dataset.pct + '%', 150));
+
+		// ==========================================================
+		// HEALTH GAUGE
+		// ==========================================================
+		(function () {
+			const score = Math.max(0, Math.min(100, Number(healthScore) || 0));
+			const bar = document.getElementById('gaugeBar');
+			const r = 92, circ = 2 * Math.PI * r;
+			bar.style.strokeDasharray = circ;
+			bar.style.strokeDashoffset = circ;
+			let gc, s1, s2, label;
+			if (score >= 85) { gc = '#059669'; s1 = '#10b981'; s2 = '#06b6d4'; label = 'Healthy'; }
+			else if (score >= 60) { gc = '#d97706'; s1 = '#f59e0b'; s2 = '#f97316'; label = 'Degraded'; }
+			else { gc = '#e11d48'; s1 = '#fb7185'; s2 = '#e11d48'; label = 'Critical'; }
+			document.getElementById('healthCard').style.setProperty('--gc', gc);
+			document.getElementById('gStop1').setAttribute('stop-color', s1);
+			document.getElementById('gStop2').setAttribute('stop-color', s2);
+			document.getElementById('statusText').textContent = label;
+			setTimeout(() => { bar.style.strokeDashoffset = circ * (1 - score / 100); }, 250);
+
+			document.getElementById('errorRate').textContent = fmtPct(pct(errorCount));
+			document.getElementById('warnRate').textContent = fmtPct(pct(warnCount));
+		})();
+
+		// ==========================================================
+		// CHART.JS GLOBAL STYLE
+		// ==========================================================
+		Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+		Chart.defaults.font.size = 12;
+		Chart.defaults.color = C.text;
+		Chart.defaults.borderColor = C.grid;
+		Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.92)';
+		Chart.defaults.plugins.tooltip.borderColor = 'rgba(15,23,42,0.1)';
+		Chart.defaults.plugins.tooltip.borderWidth = 1;
+		Chart.defaults.plugins.tooltip.padding = 12;
+		Chart.defaults.plugins.tooltip.cornerRadius = 10;
+		Chart.defaults.plugins.tooltip.titleColor = '#e6ebf5';
+		Chart.defaults.plugins.tooltip.bodyColor = '#cbd5e1';
+		Chart.defaults.plugins.tooltip.titleFont = { weight: '600' };
+		Chart.defaults.plugins.tooltip.displayColors = true;
+		Chart.defaults.plugins.tooltip.boxPadding = 4;
+
+		console.log("Charts started");
+		console.log(infoCount, warnCount, errorCount);
+		// ==========================================================
+		// DONUT — LOG DISTRIBUTION
+		// ==========================================================
+		(function () {
+			const data = [infoCount, warnCount, errorCount];
+			const labels = ['INFO', 'WARN', 'ERROR'];
+			const colors = [C.info, C.warn, C.error];
+			new Chart(document.getElementById('logPieChart'), {
+				type: 'doughnut',
+				data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#ffffff', borderWidth: 4, hoverOffset: 8, borderRadius: 6, spacing: 2 }] },
+				options: {
+					responsive: true, maintainAspectRatio: false, cutout: '74%',
+					animation: { animateRotate: true, duration: 1400, easing: 'easeOutQuart' },
+					plugins: {
+						legend: { display: false },
+						tooltip: { callbacks: { label: (c) => ` ${c.label}: ${nf.format(c.raw)} (${fmtPct(pct(c.raw))})` } }
+					}
+				}
+			});
+			document.getElementById('donutTotal').textContent = nf.format(total);
+			document.getElementById('donutLegend').innerHTML = labels.map((l, i) => `
+		<div class="legend-row">
+			<span class="sw" style="background:${colors[i]}"></span>
+			<span class="name">${l}</span>
+			<span class="num">${nf.format(data[i])}</span>
+			<span class="pct">${fmtPct(pct(data[i]))}</span>
+		</div>`).join('');
+		})();
+
+		// ==========================================================
+		// HORIZONTAL BAR — TOP ERROR CATEGORIES
+		// ==========================================================
+		(function () {
+			const pairs = errorLabels.map((l, i) => [l, Number(errorValues[i]) || 0]).sort((a, b) => b[1] - a[1]);
+			const top = pairs.slice(0, 8);
+			document.getElementById('categoryChip').textContent = pairs.length + (pairs.length === 1 ? ' category' : ' categories');
+			const ctx = document.getElementById('errorBarChart').getContext('2d');
+			new Chart(ctx, {
+				type: 'bar',
+				data: {
+					labels: top.map(p => p[0]),
+					datasets: [{
+						label: 'Occurrences',
+						data: top.map(p => p[1]),
+						backgroundColor: (c) => {
+							const { chartArea } = c.chart;
+							if (!chartArea) return '#818cf8';
+							const g = c.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+							g.addColorStop(0, 'rgba(99,102,241,0.45)');
+							g.addColorStop(1, 'rgba(99,102,241,0.95)');
+							return c.dataIndex === 0 ? (() => { const h = c.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0); h.addColorStop(0, 'rgba(244,63,94,0.45)'); h.addColorStop(1, 'rgba(225,29,72,0.95)'); return h; })() : g;
+						},
+						borderRadius: 8, borderSkipped: false, barThickness: 'flex', maxBarThickness: 26, categoryPercentage: 0.75
+					}]
+				},
+				options: {
+					indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+					animation: { duration: 1200, easing: 'easeOutQuart' },
+					plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${nf.format(c.raw)} occurrences` } } },
+					scales: {
+						x: { beginAtZero: true, grid: { color: C.grid, drawTicks: false }, border: { display: false }, ticks: { padding: 8, color: C.faint } },
+						y: {
+							grid: { display: false }, border: { display: false }, ticks: {
+								color: '#334155', font: { family: "'JetBrains Mono', monospace", size: 11.5 }, padding: 10,
+								callback: function (v) { const s = this.getLabelForValue(v); return s.length > 28 ? s.slice(0, 27) + '…' : s; }
+							}
+						}
+					}
+				}
+			});
+		})();
+
+		// ==========================================================
+		// LINE — ERROR TREND
+		// ==========================================================
+		(function () {
+			const vals = trendValues.map(Number);
+			let peakIdx = 0;
+			vals.forEach((v, i) => { if (v > vals[peakIdx]) peakIdx = i; });
+			if (vals.length) {
+				document.getElementById('peakChip').innerHTML =
+					`<span style="width:7px;height:7px;border-radius:50%;background:${C.error};box-shadow:0 0 0 3px rgba(239,68,68,0.18)"></span>Peak ${trendLabels[peakIdx]} · ${nf.format(vals[peakIdx])} errors`;
+			}
+			const ctx = document.getElementById('trendChart').getContext('2d');
+			new Chart(ctx, {
+				type: 'line',
+				data: {
+					labels: trendLabels,
+					datasets: [{
+						label: 'Errors',
+						data: vals,
+						borderColor: '#f43f5e',
+						borderWidth: 2.5,
+						fill: true,
+						tension: 0.4,
+						backgroundColor: (c) => {
+							const { chartArea } = c.chart;
+							if (!chartArea) return 'rgba(251,113,133,0.2)';
+							const g = c.chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+							g.addColorStop(0, 'rgba(244,63,94,0.22)');
+							g.addColorStop(0.6, 'rgba(244,63,94,0.04)');
+							g.addColorStop(1, 'rgba(251,113,133,0)');
+							return g;
+						},
+						pointRadius: (c) => c.dataIndex === peakIdx ? 5 : 0,
+						pointBackgroundColor: '#f43f5e',
+						pointBorderColor: '#ffffff',
+						pointBorderWidth: 2,
+						pointHoverRadius: 6,
+						pointHoverBackgroundColor: '#fff',
+						pointHoverBorderColor: '#f43f5e',
+						pointHoverBorderWidth: 3
+					}]
+				},
+				options: {
+					responsive: true, maintainAspectRatio: false,
+					interaction: { mode: 'index', intersect: false },
+					animation: { duration: 1400, easing: 'easeOutQuart' },
+					plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${nf.format(c.raw)} errors` } } },
+					scales: {
+						x: { grid: { display: false }, border: { display: false }, ticks: { color: C.faint, maxRotation: 0, autoSkipPadding: 16 } },
+						y: { beginAtZero: true, grid: { color: C.grid, drawTicks: false }, border: { display: false }, ticks: { color: C.faint, padding: 10, precision: 0 } }
+					}
+				}
+			});
+		})();
+
+		// ==========================================================
+		// INCIDENT SEVERITY STYLING
+		// ==========================================================
+		(function () {
+			const list = document.getElementById('incidentList');
+			const items = list.querySelectorAll('.incident');
+			if (!items.length) {
+				list.innerHTML = '<div class="empty">No critical incidents detected. All systems nominal.</div>';
+				document.getElementById('incidentChip').style.display = 'none';
+				return;
+			}
+			items.forEach(it => {
+				const sev = it.querySelector('.sev');
+				const s = (sev.textContent || '').trim().toUpperCase();
+				const cls = s.includes('CRIT') ? 'sev-critical' : s.includes('HIGH') ? 'sev-high' : s.includes('MED') ? 'sev-medium' : 'sev-low';
+				it.classList.add(cls);
+			});
+			document.getElementById('incidentChip').textContent = items.length + (items.length === 1 ? ' incident' : ' incidents');
+		})();
+
+		// ==========================================================
+		// ERROR TABLE — share bars, ranking, search, sort
+		// ==========================================================
+		(function () {
+			const tbody = document.querySelector('#errorTable tbody');
+			const rows = () => Array.from(tbody.querySelectorAll('tr'));
+			const max = Math.max(1, ...rows().map(r => Number(r.dataset.count) || 0));
+
+			// default sort: highest count first
+			rows().sort((a, b) => (Number(b.dataset.count) || 0) - (Number(a.dataset.count) || 0)).forEach(r => tbody.appendChild(r));
+
+			const rerank = () => rows().filter(r => r.style.display !== 'none').forEach((r, i) => r.querySelector('.rank').textContent = i + 1);
+			rerank();
+
+			setTimeout(() => rows().forEach(r => {
+				r.querySelector('.share-bar span').style.width = ((Number(r.dataset.count) || 0) / max * 100) + '%';
+			}), 300);
+
+			// search
+			const empty = document.getElementById('tableEmpty');
+			document.getElementById('tableSearch').addEventListener('input', (e) => {
+				const q = e.target.value.trim().toLowerCase();
+				let visible = 0;
+				rows().forEach(r => {
+					const show = r.cells[0].textContent.toLowerCase().includes(q);
+					r.style.display = show ? '' : 'none';
+					if (show) visible++;
+				});
+				empty.style.display = visible ? 'none' : 'block';
+				rerank();
+			});
+
+			// sort
+			document.querySelectorAll('#errorTable th[data-sort]').forEach((th, idx) => {
+				let asc = idx === 1 ? false : true;
+				th.addEventListener('click', () => {
+					asc = !asc;
+					const type = th.dataset.sort;
+					rows().sort((a, b) => {
+						const va = type === 'num' ? Number(a.dataset.count) || 0 : a.cells[0].textContent.trim().toLowerCase();
+						const vb = type === 'num' ? Number(b.dataset.count) || 0 : b.cells[0].textContent.trim().toLowerCase();
+						return (va > vb ? 1 : va < vb ? -1 : 0) * (asc ? 1 : -1);
+					}).forEach(r => tbody.appendChild(r));
+					document.querySelectorAll('#errorTable th .arrow').forEach(a => a.textContent = '↕');
+					th.querySelector('.arrow').textContent = asc ? '↑' : '↓';
+					rerank();
+				});
+			});
+		})();
+
+		/*]]>*/
+	</script>
+</body>
+
+</html>
