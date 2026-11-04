@@ -23,7 +23,7 @@
 				</div>
 				<div>
 					<div class="brand-title">AI Log Analyzer</div>
-					<div class="brand-sub">NovaBank · BFSI Observability &amp; Incident Intelligence</div>
+					<div class="brand-sub"><span th:text="${brandName}">NovaBank</span> · <span th:text="${brandTagline}">BFSI Observability</span></div>
 				</div>
 			</a>
 			<div class="topbar-actions">
@@ -81,6 +81,7 @@
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10" /></svg></span>
 				</div>
 				<div class="kpi-value" id="kpiTotal">—</div>
+				<div class="kpi-delta" id="delta-total" title="Change vs the previous period of the same length"></div>
 				<div class="meter"><span style="width:100%"></span></div>
 				<div class="kpi-foot"><span>Events ingested</span><span class="kpi-share" id="kpiRate">—</span></div>
 			</section>
@@ -91,6 +92,7 @@
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg></span>
 				</div>
 				<div class="kpi-value" id="kpiInfo">—</div>
+				<div class="kpi-delta" id="delta-info" title="Change vs the previous period of the same length"></div>
 				<div class="meter"><span id="infoMeter"></span></div>
 				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="infoShare">—</span></div>
 			</section>
@@ -101,6 +103,7 @@
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19z" /><path d="M12 10v4M12 17h.01" /></svg></span>
 				</div>
 				<div class="kpi-value" id="kpiWarn">—</div>
+				<div class="kpi-delta" id="delta-warn" title="Change vs the previous period of the same length"></div>
 				<div class="meter"><span id="warnMeter"></span></div>
 				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="warnShare">—</span></div>
 			</section>
@@ -111,6 +114,7 @@
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M15 9l-6 6M9 9l6 6" /></svg></span>
 				</div>
 				<div class="kpi-value" id="kpiError">—</div>
+				<div class="kpi-delta" id="delta-error" title="Change vs the previous period of the same length"></div>
 				<div class="meter"><span id="errorMeter"></span></div>
 				<div class="kpi-foot"><span id="fatalNote">incl. fatal</span><span class="kpi-share" id="errorShare">—</span></div>
 			</section>
@@ -122,6 +126,7 @@
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
 				</div>
 				<div class="kpi-value" id="kpiThroughput">—</div>
+				<div class="kpi-delta" id="delta-throughput" title="Change vs the previous period of the same length"></div>
 				<div class="meter"><span id="throughputMeter"></span></div>
 				<div class="kpi-foot"><span>events / min (avg)</span><span class="kpi-share" id="throughputPeak">—</span></div>
 			</section>
@@ -132,6 +137,7 @@
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg></span>
 				</div>
 				<div class="kpi-value" id="kpiFatal">—</div>
+				<div class="kpi-delta" id="delta-fatal" title="Change vs the previous period of the same length"></div>
 				<div class="meter"><span id="fatalMeter"></span></div>
 				<div class="kpi-foot"><span>system-critical failures</span><span class="kpi-share" id="fatalShare">—</span></div>
 			</section>
@@ -437,6 +443,7 @@
 
 	<div class="toast" id="toast"></div>
 
+	<script th:inline="javascript">window.APP_BRAND = { name: /*[[${brandName}]]*/ "NovaBank", tagline: /*[[${brandTagline}]]*/ "BFSI Observability" };</script>
 	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
 	<script th:src="@{/js/report.js}" src="/js/report.js"></script>
 </body>

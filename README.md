@@ -59,3 +59,6 @@ curl -X POST --data-binary @app.log -H 'Content-Type: text/plain' "http://localh
 ```
 
 Configuration lives in `src/main/resources/application.properties` (`logs.simulator.*`, `logs.retention-days`).
+
+**Branding:** "NovaBank" is a fictional demo bank, so no real institution's name or brand is used. Change it with
+`app.brand.name` and `app.brand.tagline`; the dashboard header, PDF cover, page headers and file name all follow.

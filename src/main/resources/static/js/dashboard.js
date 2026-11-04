@@ -364,6 +364,38 @@
 		requestAnimationFrame(tick);
 	}
 
+	/**
+	 * Change vs the previous window. upIsBad: true for errors/warnings, false for good metrics,
+	 * null when direction carries no judgement (volume).
+	 */
+	function delta(cur, prev, upIsBad) {
+		if (prev == null || prev === 0) return null;
+		const p = (cur - prev) * 100 / prev;
+		const dir = Math.abs(p) < 0.5 ? 'flat' : p > 0 ? 'up' : 'down';
+		const cls = dir === 'flat' || upIsBad === null ? 'neutral' : (dir === 'up') === upIsBad ? 'bad' : 'good';
+		return { pct: p, dir, cls, arrow: dir === 'up' ? '▲' : dir === 'down' ? '▼' : '■' };
+	}
+
+	function renderDelta(id, d, label) {
+		const el = $(id);
+		if (!el) return;
+		if (!d) { el.className = 'kpi-delta'; el.innerHTML = ''; return; }
+		el.className = 'kpi-delta ' + d.cls;
+		el.innerHTML = `${d.arrow} ${Math.abs(d.pct).toFixed(1)}% <span>${esc(label)}</span>`;
+	}
+
+	function renderDeltas(s) {
+		const t = s.totals, p = s.previous;
+		const label = 'vs previous ' + (s.range === '7d' ? '7 days' : s.range);
+		const pv = (k) => (p ? p[k] : null);
+		renderDelta('delta-total', delta(t.total, pv('total'), null), label);
+		renderDelta('delta-info', delta(t.info, pv('info'), null), label);
+		renderDelta('delta-warn', delta(t.warn, pv('warn'), true), label);
+		renderDelta('delta-error', delta(t.error + t.fatal, p ? p.error + p.fatal : null, true), label);
+		renderDelta('delta-throughput', delta(t.total, pv('total'), null), label);
+		renderDelta('delta-fatal', delta(t.fatal, pv('fatal'), true), label);
+	}
+
 	function renderSummary(s) {
 		state.summary = s;
 		const t = s.totals, total = t.total || 0;
@@ -390,6 +422,7 @@
 		renderServices();
 		renderSimulator(s.simulator);
 		renderOptional(s);
+		renderDeltas(s);
 
 		$('serviceCount').textContent = s.services.length;
 		$('timestamp').textContent = s.lastEventAt ? 'Last event ' + ago(s.lastEventAt) : 'No events yet';
@@ -1077,7 +1110,7 @@
 	window.LA = {
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
 		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange,
-		RANGE_LABEL, charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
+		RANGE_LABEL, delta, charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
 	};
 
 	// ==========================================================

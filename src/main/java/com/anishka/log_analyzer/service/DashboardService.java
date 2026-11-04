@@ -49,6 +49,9 @@ public class DashboardService {
 		}
 
 		LevelTotals totals = totals(from, to);
+		// the same-length window immediately before, for "vs previous period" deltas
+		LevelTotals previous = range == TimeRange.ALL ? null
+				: totals(from.minus(range.duration()), from);
 		double total = Math.max(1, totals.total());
 		double errorRate = totals.total() == 0 ? 0 : totals.errorsAndFatal() * 100.0 / total;
 		double warnRate = totals.total() == 0 ? 0 : totals.warn() * 100.0 / total;
@@ -65,7 +68,7 @@ public class DashboardService {
 		List<ServiceStat> services = services(from, to);
 
 		LocalDateTime latest = repository.latestTimestamp();
-		return new DashboardSummary(range.code(), range.bucketMinutes(), epoch(from), epoch(now), totals,
+		return new DashboardSummary(range.code(), range.bucketMinutes(), epoch(from), epoch(now), totals, previous,
 				round2(health), round2(errorRate), round2(warnRate), trend, categories, services, formats(from, to),
 				latest == null ? null : epoch(latest), System.currentTimeMillis(), simulator.status());
 	}
