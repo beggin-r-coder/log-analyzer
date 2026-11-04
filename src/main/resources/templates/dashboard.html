@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>AI Log Analyzer · BFSI Observability</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+	<link rel="stylesheet" th:href="@{/css/dashboard.css}" href="/css/dashboard.css">
+	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+
+	<!-- ============ TOP BAR ============ -->
+	<header class="topbar">
+		<div class="topbar-inner">
+			<a class="brand" href="/">
+				<div class="brand-logo">
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>
+				</div>
+				<div>
+					<div class="brand-title">AI Log Analyzer</div>
+					<div class="brand-sub">NovaBank · BFSI Observability &amp; Incident Intelligence</div>
+				</div>
+			</a>
+			<div class="topbar-actions">
+				<button class="live-pill" id="livePill" title="Pause / resume the live log stream"><span class="live-dot"></span><span id="liveText">Live</span></button>
+				<span class="timestamp mono" id="timestamp">—</span>
+				<div class="seg" id="rangeSeg" role="group" aria-label="Time range">
+					<button data-range="15m">15m</button>
+					<button data-range="1h">1h</button>
+					<button data-range="6h">6h</button>
+					<button data-range="24h" class="active">24h</button>
+					<button data-range="7d">7d</button>
+				</div>
+				<button class="btn danger" id="incidentBtn" title="Inject a short incident into a random service (demo)">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9z" /></svg>
+					<span class="hide-sm">Simulate incident</span>
+				</button>
+				<a class="btn" href="/parser" title="Paste any log format and see how it's parsed">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6" /></svg>
+					<span class="hide-sm">Parser</span>
+				</a>
+				<a class="btn hide-sm" href="/h2-console" target="_blank" rel="noopener" title="Open the H2 database console">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>
+					H2
+				</a>
+			</div>
+		</div>
+	</header>
+
+	<main class="container">
+
+		<div class="page-head">
+			<div>
+				<h1>System Overview</h1>
+				<p>Live analysis of logs persisted in H2 from <span id="serviceCount">12</span> banking services: errors, trends and incidents.</p>
+			</div>
+			<span class="chip" id="rangeChip">Last 24 hours</span>
+		</div>
+
+		<div class="banner" id="incidentBanner"><span class="live-dot"></span><span id="incidentText">Active incident</span></div>
+
+		<div class="grid">
+
+			<!-- ============ KPI CARDS ============ -->
+			<section class="card kpi span-3" style="--c: var(--total); animation-delay: .00s">
+				<div class="kpi-top">
+					<span class="kpi-label">Total Logs</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10" /></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiTotal">—</div>
+				<div class="meter"><span style="width:100%"></span></div>
+				<div class="kpi-foot"><span>Events ingested</span><span class="kpi-share" id="kpiRate">—</span></div>
+			</section>
+
+			<section class="card kpi span-3" style="--c: var(--info); animation-delay: .06s">
+				<div class="kpi-top">
+					<span class="kpi-label">Info</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiInfo">—</div>
+				<div class="meter"><span id="infoMeter"></span></div>
+				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="infoShare">—</span></div>
+			</section>
+
+			<section class="card kpi span-3" style="--c: var(--warn); animation-delay: .12s">
+				<div class="kpi-top">
+					<span class="kpi-label">Warnings</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19z" /><path d="M12 10v4M12 17h.01" /></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiWarn">—</div>
+				<div class="meter"><span id="warnMeter"></span></div>
+				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="warnShare">—</span></div>
+			</section>
+
+			<section class="card kpi span-3" style="--c: var(--error); animation-delay: .18s">
+				<div class="kpi-top">
+					<span class="kpi-label">Errors</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M15 9l-6 6M9 9l6 6" /></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiError">—</div>
+				<div class="meter"><span id="errorMeter"></span></div>
+				<div class="kpi-foot"><span id="fatalNote">incl. fatal</span><span class="kpi-share" id="errorShare">—</span></div>
+			</section>
+
+			<!-- ============ HEALTH SCORE ============ -->
+			<section class="card span-4" style="animation-delay: .24s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">System Health Score</div>
+						<div class="card-sub">100 − (error % × 5 + warning %)</div>
+					</div>
+				</div>
+				<div class="card-body health" id="healthCard">
+					<div class="gauge">
+						<svg width="220" height="220" viewBox="0 0 220 220">
+							<defs>
+								<linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="1">
+									<stop offset="0%" id="gStop1" stop-color="#34d399" />
+									<stop offset="100%" id="gStop2" stop-color="#22d3ee" />
+								</linearGradient>
+							</defs>
+							<circle class="gauge-track" cx="110" cy="110" r="92" fill="none" stroke-width="14" />
+							<circle class="gauge-bar" id="gaugeBar" cx="110" cy="110" r="92" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" />
+						</svg>
+						<div class="gauge-center">
+							<div>
+								<div class="gauge-score"><span id="healthScore">—</span><small>/100</small></div>
+								<div class="gauge-label">Health Index</div>
+							</div>
+						</div>
+					</div>
+					<span class="status-pill"><i></i><span id="statusText">—</span></span>
+					<div class="health-stats">
+						<div class="stat-box"><div class="k">Error Rate</div><div class="v" id="errorRate" style="color: var(--error)">—</div></div>
+						<div class="stat-box"><div class="k">Warn Rate</div><div class="v" id="warnRate" style="color: var(--warn)">—</div></div>
+					</div>
+				</div>
+			</section>
+
+			<!-- ============ ERROR TREND ============ -->
+			<section class="card span-8" style="animation-delay: .30s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Error Trend Timeline</div>
+						<div class="card-sub" id="trendSub">Errors &amp; warnings per hour, your local time</div>
+					</div>
+					<div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+						<div class="chart-legend">
+							<span><i class="dot" style="background:#f43f5e"></i>Errors</span>
+							<span><i class="dot" style="background:#f59e0b"></i>Warnings</span>
+						</div>
+						<span class="chip" id="peakChip">Peak —</span>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="chart-wrap tall"><canvas id="trendChart"></canvas></div>
+				</div>
+			</section>
+
+			<!-- ============ DISTRIBUTION ============ -->
+			<section class="card span-4" style="animation-delay: .36s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Log Level Distribution</div>
+						<div class="card-sub">Share of events by severity</div>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="donut-wrap">
+						<canvas id="logPieChart"></canvas>
+						<div class="donut-center"><div><div class="v" id="donutTotal">—</div><div class="k">Total Events</div></div></div>
+					</div>
+					<div class="legend" id="donutLegend"></div>
+				</div>
+			</section>
+
+			<!-- ============ TOP ERROR CATEGORIES ============ -->
+			<section class="card span-8" style="animation-delay: .42s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Top Error Categories</div>
+						<div class="card-sub">BFSI incident classes · click a bar to see its logs</div>
+					</div>
+					<span class="chip" id="categoryChip">— categories</span>
+				</div>
+				<div class="card-body">
+					<div class="chart-wrap"><canvas id="errorBarChart"></canvas></div>
+				</div>
+			</section>
+
+			<!-- ============ CRITICAL INCIDENTS ============ -->
+			<section class="card span-5" style="animation-delay: .48s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Top Critical Incidents</div>
+						<div class="card-sub">Severity from error rate per hour</div>
+					</div>
+					<span class="chip" style="color:#e11d48; border-color: rgba(225,29,72,.25); background: rgba(225,29,72,.06)" id="incidentChip">—</span>
+				</div>
+				<div class="card-body">
+					<div class="incident-list" id="incidentList"><div class="empty">Loading…</div></div>
+				</div>
+			</section>
+
+			<!-- ============ SERVICE HEALTH ============ -->
+			<section class="card span-7" style="animation-delay: .54s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Service Health</div>
+						<div class="card-sub">Per-service volume and error rate · click a row to filter logs</div>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="table-wrap">
+						<table id="serviceTable">
+							<thead>
+								<tr>
+									<th data-sort="name">Service<span class="arrow">↕</span></th>
+									<th data-sort="total">Events<span class="arrow">↕</span></th>
+									<th data-sort="errors">Errors<span class="arrow">↕</span></th>
+									<th data-sort="errorRate" class="sorted">Error rate<span class="arrow">↓</span></th>
+									<th data-sort="status">Status<span class="arrow">↕</span></th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</div>
+				</div>
+			</section>
+
+			<!-- ============ LOG EXPLORER ============ -->
+			<section class="card span-12" style="animation-delay: .60s" id="explorer">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Log Explorer</div>
+						<div class="card-sub">Search, filter and sort every persisted log · click a row for the raw line</div>
+					</div>
+					<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+						<label class="switch" title="Auto-refresh newest logs while on page 1 sorted by time"><input type="checkbox" id="tailToggle" checked> Live tail</label>
+						<button class="btn small" id="resetBtn">Reset filters</button>
+						<a class="btn small" id="exportBtn" href="/api/logs/export">Export CSV</a>
+					</div>
+				</div>
+				<div class="toolbar">
+					<label class="search">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+						<input type="search" id="logSearch" placeholder="Search message, trace ID, host, IP… (all words must match)" autocomplete="off">
+					</label>
+					<div class="level-filters" id="levelFilters"></div>
+					<select class="input" id="serviceFilter" aria-label="Service"><option value="">All services</option></select>
+					<select class="input" id="categoryFilter" aria-label="Category"><option value="">All categories</option></select>
+				</div>
+				<div class="card-body" style="padding-top:12px">
+					<div class="table-wrap explorer">
+						<table id="logTable">
+							<thead>
+								<tr>
+									<th data-sort="timestamp" class="sorted">Time<span class="arrow">↓</span></th>
+									<th data-sort="level">Level<span class="arrow">↕</span></th>
+									<th data-sort="service">Service<span class="arrow">↕</span></th>
+									<th data-sort="category" class="cat">Category<span class="arrow">↕</span></th>
+									<th data-sort="message">Message<span class="arrow">↕</span></th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+						<div class="empty" id="logEmpty" style="display:none">No logs match these filters.</div>
+					</div>
+				</div>
+				<div class="pager">
+					<span id="pageInfo">—</span>
+					<div class="controls">
+						<select class="input" id="pageSize" aria-label="Rows per page">
+							<option value="25">25 / page</option>
+							<option value="50" selected>50 / page</option>
+							<option value="100">100 / page</option>
+							<option value="200">200 / page</option>
+						</select>
+						<button class="btn small" id="prevPage">← Prev</button>
+						<button class="btn small" id="nextPage">Next →</button>
+					</div>
+				</div>
+			</section>
+
+		</div>
+
+		<footer>AI Log Analyzer · Spring Boot + H2 · <a href="/h2-console" target="_blank" rel="noopener">H2 console</a> · <a href="/parser">Parser playground</a></footer>
+	</main>
+
+	<div class="toast" id="toast"></div>
+
+	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
+</body>
+
+</html>
