@@ -59,6 +59,10 @@ public interface LogRecordRepository extends JpaRepository<LogRecord, Long>, Jpa
 
 	Optional<LogRecord> findTopByOrderByTimestampAsc();
 
+	/** [sourceFormat, count] */
+	@Query("select r.sourceFormat, count(r) from LogRecord r where r.timestamp >= :from and r.timestamp < :to group by r.sourceFormat order by count(r) desc")
+	List<Object[]> formatCounts(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
 	@Query("select distinct r.service from LogRecord r where r.service is not null order by r.service")
 	List<String> distinctServices();
 

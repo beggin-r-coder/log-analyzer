@@ -4,13 +4,16 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.anishka.log_analyzer.dto.LogRecordDto;
 import com.anishka.log_analyzer.entity.LogRecord;
 import com.anishka.log_analyzer.parser.ParsedLog;
 import com.anishka.log_analyzer.parser.UniversalLogParser;
 import com.anishka.log_analyzer.repository.LogRecordRepository;
+import com.anishka.log_analyzer.stream.LogsIngestedEvent;
 
 /** Parses raw log text in any supported format and persists it. */
 @Service
@@ -19,12 +22,14 @@ public class LogIngestionService {
 	private final UniversalLogParser parser;
 	private final ErrorClassifier classifier;
 	private final LogRecordRepository repository;
+	private final ApplicationEventPublisher events;
 
 	public LogIngestionService(UniversalLogParser parser, ErrorClassifier classifier,
-			LogRecordRepository repository) {
+			LogRecordRepository repository, ApplicationEventPublisher events) {
 		this.parser = parser;
 		this.classifier = classifier;
 		this.repository = repository;
+		this.events = events;
 	}
 
 	/** Parses without saving – used by the parser playground. */
@@ -44,7 +49,12 @@ public class LogIngestionService {
 		for (ParsedLog p : parsed) {
 			records.add(toRecord(p, now));
 		}
-		return repository.saveAll(records);
+		List<LogRecord> saved = repository.saveAll(records);
+		// delivered to live-feed subscribers after the transaction commits
+		int from = Math.max(0, saved.size() - 200);
+		events.publishEvent(new LogsIngestedEvent(saved.subList(from, saved.size()).stream()
+				.map(LogRecordDto::from).toList()));
+		return saved;
 	}
 
 	/** Builds an unsaved record so the parser playground can show the classification too. */

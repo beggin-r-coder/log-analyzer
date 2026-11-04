@@ -78,11 +78,27 @@
 		return `${f(a)} – ${f(b)} · ${fmtDay(a)}`;
 	}
 
+	/** "Today", "Yesterday", "Monday" (within a week) or "" for older dates. */
+	function dayLabel(ms) {
+		const d = new Date(ms), now = new Date();
+		const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+		const diff = Math.round((startOf(now) - startOf(d)) / 86400000);
+		if (diff === 0) return 'Today';
+		if (diff === 1) return 'Yesterday';
+		if (diff > 1 && diff < 7) return d.toLocaleDateString('en-US', { weekday: 'long' });
+		if (diff === -1) return 'Tomorrow';
+		return '';
+	}
+	const fmtFullDate = (ms) => new Date(ms).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); // Wed, Nov 4, 2026
+
 	function fmtLogTime(ms) {
-		const d = new Date(ms);
+		const d = new Date(ms), rel = dayLabel(ms);
 		return {
 			time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }),
-			date: fmtDay(d) + ' · .' + String(d.getMilliseconds()).padStart(3, '0')
+			ms: '.' + String(d.getMilliseconds()).padStart(3, '0'),
+			rel,
+			full: fmtFullDate(ms),
+			date: (rel && rel !== d.toLocaleDateString('en-US', { weekday: 'long' }) ? rel + ' · ' : '') + fmtFullDate(ms)
 		};
 	}
 
@@ -190,6 +206,148 @@
 		}
 	});
 
+	// ---------- optional charts ----------
+	const volumeChart = new Chart($('volumeChart'), {
+		type: 'bar',
+		data: {
+			labels: [], datasets: [
+				{ label: 'Info/Debug', data: [], backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 3, stack: 's' },
+				{ label: 'Warn', data: [], backgroundColor: 'rgba(245,158,11,0.85)', borderRadius: 3, stack: 's' },
+				{ label: 'Error', data: [], backgroundColor: 'rgba(239,68,68,0.9)', borderRadius: 3, stack: 's' }
+			]
+		},
+		options: {
+			responsive: true, maintainAspectRatio: false, animation: { duration: 500 },
+			interaction: { mode: 'index', intersect: false },
+			plugins: {
+				legend: { display: false },
+				tooltip: { callbacks: { title: (items) => items.length ? bucketRange(trendBuckets[items[0].dataIndex], trendBucketMin) : '', label: (c) => ` ${c.dataset.label}: ${nf.format(c.raw)}` } }
+			},
+			scales: {
+				x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { color: C.faint, maxRotation: 0, autoSkip: true, autoSkipPadding: 18 } },
+				y: { stacked: true, beginAtZero: true, grid: { color: C.grid, drawTicks: false }, border: { display: false }, ticks: { color: C.faint, padding: 10, precision: 0 } }
+			}
+		}
+	});
+
+	const FORMAT_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#84cc16', '#64748b', '#a855f7'];
+	const formatChart = new Chart($('formatChart'), {
+		type: 'doughnut',
+		data: { labels: [], datasets: [{ data: [], backgroundColor: FORMAT_COLORS, borderColor: '#fff', borderWidth: 3, spacing: 1, borderRadius: 4 }] },
+		options: { responsive: true, maintainAspectRatio: false, cutout: '72%', animation: { duration: 500 }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${c.label}: ${nf.format(c.raw)}` } } } }
+	});
+
+	const SLO = 3;
+	const errorRateChart = new Chart($('errorRateChart'), {
+		type: 'line',
+		data: {
+			labels: [], datasets: [
+				{ label: 'Error rate', data: [], borderColor: '#8b5cf6', borderWidth: 2.2, tension: 0.35, fill: true, pointRadius: 0, pointHoverRadius: 5,
+					backgroundColor: (c) => gradient(c, [[0, 'rgba(139,92,246,0.22)'], [1, 'rgba(139,92,246,0)']]) },
+				{ label: 'SLO', data: [], borderColor: 'rgba(225,29,72,0.6)', borderDash: [6, 5], borderWidth: 1.4, pointRadius: 0, fill: false }
+			]
+		},
+		options: {
+			responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, interaction: { mode: 'index', intersect: false },
+			plugins: {
+				legend: { display: false },
+				tooltip: { callbacks: { title: (items) => items.length ? bucketRange(trendBuckets[items[0].dataIndex], trendBucketMin) : '', label: (c) => ` ${c.dataset.label}: ${Number(c.raw).toFixed(2)}%` } }
+			},
+			scales: {
+				x: { grid: { display: false }, border: { display: false }, ticks: { color: C.faint, maxRotation: 0, autoSkip: true, autoSkipPadding: 18 } },
+				y: { beginAtZero: true, grid: { color: C.grid, drawTicks: false }, border: { display: false }, ticks: { color: C.faint, padding: 10, callback: (v) => v + '%' } }
+			}
+		}
+	});
+
+	let svcChartNames = [];
+	const svcErrorChart = new Chart($('svcErrorChart'), {
+		type: 'bar',
+		data: {
+			labels: [], datasets: [
+				{ label: 'Errors', data: [], backgroundColor: 'rgba(239,68,68,0.85)', borderRadius: 5, maxBarThickness: 22 },
+				{ label: 'Warnings', data: [], backgroundColor: 'rgba(245,158,11,0.55)', borderRadius: 5, maxBarThickness: 22 }
+			]
+		},
+		options: {
+			responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, interaction: { mode: 'index', intersect: false },
+			onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+			onClick: (e, els) => { if (els.length) filterExplorer({ service: svcChartNames[els[0].index] }); },
+			plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } } },
+			scales: {
+				x: { grid: { display: false }, border: { display: false }, ticks: { color: '#334155', maxRotation: 45, minRotation: 30, font: { size: 11 } } },
+				y: { beginAtZero: true, grid: { color: C.grid, drawTicks: false }, border: { display: false }, ticks: { color: C.faint, padding: 8, precision: 0 } }
+			}
+		}
+	});
+
+	function renderOptional(s) {
+		const t = s.totals, total = t.total || 0;
+		const labels = s.trend.map((p) => bucketLabel(p.t, s.bucketMinutes));
+
+		// volume
+		volumeChart.data.labels = labels;
+		volumeChart.data.datasets[0].data = s.trend.map((p) => p.total - p.warnings - p.errors);
+		volumeChart.data.datasets[1].data = s.trend.map((p) => p.warnings);
+		volumeChart.data.datasets[2].data = s.trend.map((p) => p.errors);
+		volumeChart.update();
+		$('volumeSub').textContent = $('trendSub').textContent.replace('Errors & warnings', 'Events');
+
+		// error rate
+		const rates = s.trend.map((p) => p.total ? +(p.errors * 100 / p.total).toFixed(2) : 0);
+		errorRateChart.data.labels = labels;
+		errorRateChart.data.datasets[0].data = rates;
+		errorRateChart.data.datasets[1].data = rates.map(() => SLO);
+		errorRateChart.update();
+		const breaches = rates.filter((r) => r > SLO).length;
+		$('errorRateChip').textContent = breaches ? `${breaches} bucket${breaches > 1 ? 's' : ''} above SLO` : 'Within SLO';
+		$('errorRateChip').style.color = breaches ? '#be123c' : '#047857';
+
+		// errors by service
+		const svcs = [...s.services].sort((a, b) => b.errors - a.errors);
+		svcChartNames = svcs.map((x) => x.name);
+		svcErrorChart.data.labels = svcChartNames;
+		svcErrorChart.data.datasets[0].data = svcs.map((x) => x.errors);
+		svcErrorChart.data.datasets[1].data = svcs.map((x) => x.warnings);
+		svcErrorChart.update();
+
+		// formats
+		const fmts = s.formats || [];
+		formatChart.data.labels = fmts.map((f) => f.label);
+		formatChart.data.datasets[0].data = fmts.map((f) => f.count);
+		formatChart.update();
+		$('formatCount').textContent = fmts.length;
+		$('formatLegend').innerHTML = fmts.slice(0, 7).map((f, i) => `
+			<div class="legend-row"><span class="sw" style="background:${FORMAT_COLORS[i % FORMAT_COLORS.length]}"></span>
+			<span class="name">${esc(f.label)}</span><span class="num">${nf.format(f.count)}</span>
+			<span class="pct">${fmtPct(total ? f.count * 100 / total : 0)}</span></div>`).join('');
+
+		// optional KPIs
+		const minutes = Math.max(1, (s.to - s.from) / 60000);
+		const avg = total / minutes;
+		const peakBucket = Math.max(0, ...s.trend.map((p) => p.total));
+		const peakPerMin = peakBucket / s.bucketMinutes;
+		$('kpiThroughput').textContent = avg.toFixed(1);
+		$('throughputPeak').textContent = 'peak ' + peakPerMin.toFixed(1);
+		$('throughputMeter').style.width = Math.min(100, peakPerMin ? avg / peakPerMin * 100 : 0) + '%';
+
+		countTo($('kpiFatal'), t.fatal);
+		$('fatalShare').textContent = fmtPct(total ? t.fatal * 100 / total : 0);
+		$('fatalMeter').style.width = (t.fatal ? Math.max(2, Math.min(100, t.fatal * 10)) : 0) + '%';
+
+		const healthy = s.services.filter((x) => x.status === 'HEALTHY').length;
+		$('kpiServices').textContent = `${healthy}/${s.services.length}`;
+		$('servicesShare').textContent = s.services.length ? Math.round(healthy * 100 / s.services.length) + '%' : '—';
+		$('servicesMeter').style.width = (s.services.length ? healthy * 100 / s.services.length : 0) + '%';
+		const bad = s.services.filter((x) => x.status !== 'HEALTHY').map((x) => x.name);
+		$('servicesNote').textContent = bad.length ? 'issues: ' + bad.slice(0, 2).join(', ') + (bad.length > 2 ? '…' : '') : 'all services healthy';
+
+		const open = s.categories.filter((c) => c.severity === 'CRITICAL' || c.severity === 'HIGH');
+		countTo($('kpiIncidents'), open.length);
+		$('incidentsTop').textContent = open.length ? open[0].severity : 'none';
+		$('incidentsMeter').style.width = Math.min(100, open.length * 25) + '%';
+	}
+
 	// ==========================================================
 	// DASHBOARD RENDERING
 	// ==========================================================
@@ -231,6 +389,7 @@
 		renderIncidents(s.categories);
 		renderServices();
 		renderSimulator(s.simulator);
+		renderOptional(s);
 
 		$('serviceCount').textContent = s.services.length;
 		$('timestamp').textContent = s.lastEventAt ? 'Last event ' + ago(s.lastEventAt) : 'No events yet';
@@ -408,7 +567,7 @@
 			const open = state.openRows.has(r.id);
 			return `
 			<tr class="log-row${fresh}${open ? ' open' : ''}" data-id="${r.id}">
-				<td class="time">${esc(t.time)}<span class="d">${esc(t.date)}</span></td>
+				<td class="time">${esc(t.time)}<span class="d">${t.rel ? '<b style="color:#4f46e5">' + esc(t.rel) + '</b> · ' : ''}${esc(t.full)}</span></td>
 				<td><span class="lvl L-${esc(r.level)}">${esc(r.level)}</span></td>
 				<td class="svc">${highlight(r.service)}</td>
 				<td class="cat">${r.category ? highlight(r.category) : '<span style="color:var(--text-faint)">—</span>'}</td>
@@ -614,9 +773,319 @@
 	}
 
 	// ==========================================================
+	// WIDGET LAYOUT  (add / remove / reorder, saved per browser)
+	// ==========================================================
+	const WIDGETS = [
+		{ id: 'kpi-total', group: 'KPIs', name: 'Total logs', desc: 'Events ingested and average rate', icon: 'Σ' },
+		{ id: 'kpi-info', group: 'KPIs', name: 'Info events', desc: 'Informational volume and share', icon: 'i' },
+		{ id: 'kpi-warn', group: 'KPIs', name: 'Warnings', desc: 'Warning volume and share', icon: '!' },
+		{ id: 'kpi-error', group: 'KPIs', name: 'Errors', desc: 'Errors incl. fatal, and error share', icon: '✕' },
+		{ id: 'kpi-throughput', group: 'KPIs', name: 'Throughput', desc: 'Average vs. peak events per minute', icon: '↗' },
+		{ id: 'kpi-fatal', group: 'KPIs', name: 'Fatal events', desc: 'System-critical failures', icon: '★' },
+		{ id: 'kpi-services', group: 'KPIs', name: 'Healthy services', desc: 'Services under the error threshold', icon: '▤' },
+		{ id: 'kpi-incidents', group: 'KPIs', name: 'Open incidents', desc: 'Critical + high severity categories', icon: '⚠' },
+		{ id: 'health', group: 'Charts', name: 'System health score', desc: 'Gauge weighted by errors and warnings', icon: '◔' },
+		{ id: 'trend', group: 'Charts', name: 'Error trend timeline', desc: 'Errors and warnings over time', icon: '〜' },
+		{ id: 'donut', group: 'Charts', name: 'Log level distribution', desc: 'Share of events per level', icon: '◕' },
+		{ id: 'categories', group: 'Charts', name: 'Top error categories', desc: 'BFSI incident classes', icon: '≡' },
+		{ id: 'volume', group: 'Charts', name: 'Event volume', desc: 'Stacked events per bucket by severity', icon: '▮' },
+		{ id: 'errorrate', group: 'Charts', name: 'Error rate over time', desc: 'Error % per bucket against a 3% SLO', icon: '%' },
+		{ id: 'svcerrors', group: 'Charts', name: 'Errors by service', desc: 'Error and warning counts per service', icon: '▥' },
+		{ id: 'formats', group: 'Charts', name: 'Log format mix', desc: 'Formats detected by the universal parser', icon: '{}' },
+		{ id: 'livefeed', group: 'Live & tables', name: 'Live log stream', desc: 'Real-time feed pushed from the database', icon: '●' },
+		{ id: 'incidents', group: 'Live & tables', name: 'Top critical incidents', desc: 'Categories ranked by severity', icon: '▲' },
+		{ id: 'services', group: 'Live & tables', name: 'Service health', desc: 'Per-service volume and error rate', icon: '☰' },
+		{ id: 'explorer', group: 'Live & tables', name: 'Log explorer', desc: 'Search, filter, sort and export logs', icon: '⌕' }
+	];
+	const DEFAULT_ORDER = ['kpi-total', 'kpi-info', 'kpi-warn', 'kpi-error', 'kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents',
+		'health', 'trend', 'livefeed', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'incidents', 'services', 'explorer'];
+	const DEFAULT_HIDDEN = ['kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'volume', 'formats', 'errorrate', 'svcerrors'];
+	const LAYOUT_KEY = 'layout.v1';
+
+	const layout = (() => {
+		try {
+			const saved = JSON.parse(load(LAYOUT_KEY, 'null'));
+			if (saved && Array.isArray(saved.order)) {
+				const known = new Set(DEFAULT_ORDER);
+				const order = saved.order.filter((id) => known.has(id));
+				DEFAULT_ORDER.forEach((id) => { if (!order.includes(id)) order.splice(DEFAULT_ORDER.indexOf(id), 0, id); });
+				return { order, hidden: new Set((saved.hidden || []).filter((id) => known.has(id))) };
+			}
+		} catch (e) { /* fall through */ }
+		return { order: [...DEFAULT_ORDER], hidden: new Set(DEFAULT_HIDDEN) };
+	})();
+
+	const widgetEl = (id) => document.querySelector(`[data-widget="${id}"]`);
+	const widgetMeta = (id) => WIDGETS.find((w) => w.id === id);
+	const visibleWidgets = () => layout.order.filter((id) => !layout.hidden.has(id));
+
+	function saveLayout() {
+		save(LAYOUT_KEY, JSON.stringify({ order: layout.order, hidden: [...layout.hidden] }));
+	}
+
+	function applyLayout() {
+		const grid = document.querySelector('.grid');
+		layout.order.forEach((id) => {
+			const el = widgetEl(id);
+			if (!el) return;
+			grid.appendChild(el);
+			el.classList.toggle('w-hidden', layout.hidden.has(id));
+		});
+		requestAnimationFrame(() => {
+			document.querySelectorAll('[data-widget]:not(.w-hidden) canvas').forEach((cv) => {
+				const ch = Chart.getChart(cv);
+				if (ch) ch.resize();
+			});
+		});
+	}
+
+	function setWidgetVisible(id, visible) {
+		visible ? layout.hidden.delete(id) : layout.hidden.add(id);
+		saveLayout();
+		applyLayout();
+		renderWidgetList();
+		if (visible) {
+			const el = widgetEl(id);
+			if (el && !document.body.classList.contains('editing')) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
+	}
+
+	function moveWidget(id, delta) {
+		const i = layout.order.indexOf(id), j = i + delta;
+		if (j < 0 || j >= layout.order.length) return;
+		[layout.order[i], layout.order[j]] = [layout.order[j], layout.order[i]];
+		saveLayout();
+		applyLayout();
+		renderWidgetList();
+	}
+
+	function renderWidgetList() {
+		const groups = ['KPIs', 'Charts', 'Live & tables'];
+		const count = visibleWidgets().length;
+		$('widgetList').innerHTML = `<div class="w-group" style="margin-top:12px">${count} of ${WIDGETS.length} widgets shown</div>` + groups.map((g) => {
+			const ids = layout.order.filter((id) => widgetMeta(id) && widgetMeta(id).group === g);
+			return `<div class="w-group">${g}</div>` + ids.map((id) => {
+				const w = widgetMeta(id), on = !layout.hidden.has(id), idx = layout.order.indexOf(id);
+				return `<div class="w-item${on ? '' : ' off'}" data-id="${id}">
+					<div class="w-ico">${esc(w.icon)}</div>
+					<div class="w-text"><div class="w-name">${esc(w.name)}</div><div class="w-desc">${esc(w.desc)}</div></div>
+					<div class="w-move"><button data-move="-1" ${idx === 0 ? 'disabled' : ''} title="Move earlier" aria-label="Move ${esc(w.name)} up">▲</button><button data-move="1" ${idx === layout.order.length - 1 ? 'disabled' : ''} title="Move later" aria-label="Move ${esc(w.name)} down">▼</button></div>
+					<label class="toggle" title="${on ? 'Remove from' : 'Add to'} dashboard"><input type="checkbox" ${on ? 'checked' : ''} aria-label="Show ${esc(w.name)}"><span></span></label>
+				</div>`;
+			}).join('');
+		}).join('');
+	}
+
+	function initLayout() {
+		document.querySelectorAll('[data-widget]').forEach((el) => {
+			const b = document.createElement('button');
+			b.className = 'w-remove';
+			b.title = 'Remove widget';
+			b.setAttribute('aria-label', 'Remove ' + (widgetMeta(el.dataset.widget) || {}).name);
+			b.textContent = '✕';
+			b.addEventListener('click', (ev) => {
+				ev.stopPropagation();
+				const id = el.dataset.widget;
+				setWidgetVisible(id, false);
+				toast(`Removed “${widgetMeta(id).name}”. Re-add it from Customize.`);
+			});
+			el.appendChild(b);
+		});
+		applyLayout();
+		renderWidgetList();
+
+		const open = () => { document.body.classList.add('editing'); $('drawer').setAttribute('aria-hidden', 'false'); renderWidgetList(); };
+		const close = () => { document.body.classList.remove('editing'); $('drawer').setAttribute('aria-hidden', 'true'); };
+		$('customizeBtn').addEventListener('click', () => document.body.classList.contains('editing') ? close() : open());
+		$('drawerClose').addEventListener('click', close);
+		$('drawerDone').addEventListener('click', close);
+		$('drawerBackdrop').addEventListener('click', close);
+		document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+		$('layoutReset').addEventListener('click', () => {
+			layout.order = [...DEFAULT_ORDER];
+			layout.hidden = new Set(DEFAULT_HIDDEN);
+			saveLayout(); applyLayout(); renderWidgetList();
+			toast('Layout reset to default');
+		});
+		$('layoutAll').addEventListener('click', () => {
+			layout.hidden.clear();
+			saveLayout(); applyLayout(); renderWidgetList();
+		});
+		$('widgetList').addEventListener('change', (ev) => {
+			const item = ev.target.closest('.w-item');
+			if (item && ev.target.type === 'checkbox') setWidgetVisible(item.dataset.id, ev.target.checked);
+		});
+		$('widgetList').addEventListener('click', (ev) => {
+			const btn = ev.target.closest('button[data-move]');
+			if (btn) moveWidget(btn.closest('.w-item').dataset.id, Number(btn.dataset.move));
+		});
+	}
+
+	// ==========================================================
+	// LIVE LOG STREAM  (Server-Sent Events from /api/logs/stream)
+	// ==========================================================
+	const RANK = { TRACE: 0, DEBUG: 1, INFO: 2, WARN: 3, ERROR: 4, FATAL: 5 };
+	const FEED_MAX = 300;
+	const feed = { items: [], ids: new Set(), buffer: [], paused: false, minRank: 0, filter: '', open: new Set(), fresh: new Set(), es: null, connected: false, everConnected: false };
+
+	function agoShort(ms) {
+		const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+		if (s < 3) return 'just now';
+		if (s < 60) return s + 's ago';
+		if (s < 3600) return Math.floor(s / 60) + 'm ago';
+		if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+		return Math.floor(s / 86400) + 'd ago';
+	}
+
+	function addToFeed(records, live) {
+		const incoming = records.filter((r) => !feed.ids.has(r.id)).sort((a, b) => a.id - b.id);
+		if (!incoming.length) return;
+		const reading = $('feed').scrollTop > 40;
+		if (live && (feed.paused || reading)) {
+			incoming.forEach((r) => { feed.ids.add(r.id); feed.buffer.push(r); });
+			renderFeed();
+			return;
+		}
+		incoming.forEach((r) => {
+			feed.ids.add(r.id);
+			feed.items.unshift(r);
+			if (live) feed.fresh.add(r.id);
+		});
+		trimFeed();
+		renderFeed();
+	}
+
+	function flushBuffer() {
+		feed.buffer.sort((a, b) => a.id - b.id).forEach((r) => { feed.items.unshift(r); feed.fresh.add(r.id); });
+		feed.buffer = [];
+		trimFeed();
+		$('feed').scrollTop = 0;
+		renderFeed();
+	}
+
+	function trimFeed() {
+		feed.items.sort((a, b) => b.id - a.id); // newest stored first
+		while (feed.items.length > FEED_MAX) {
+			const r = feed.items.pop();
+			feed.ids.delete(r.id);
+		}
+	}
+
+	function feedVisible() {
+		const q = feed.filter.toLowerCase();
+		return feed.items.filter((r) => (RANK[r.level] || 0) >= feed.minRank
+			&& (!q || [r.message, r.service, r.traceId, r.host, r.category, r.level].some((v) => v && v.toLowerCase().includes(q))));
+	}
+
+	function renderFeed() {
+		const box = $('feed');
+		const rows = feedVisible();
+		let html = '';
+		if (feed.buffer.length) {
+			html += `<div class="feed-paused" id="feedFlush">${feed.paused ? '⏸ Stream paused' : '↑ New logs arrived'} · ${feed.buffer.length} new log${feed.buffer.length > 1 ? 's' : ''}, click to show</div>`;
+		}
+		let lastDay = null;
+		const perDay = {};
+		rows.forEach((r) => { const k = new Date(r.timestamp).toDateString(); perDay[k] = (perDay[k] || 0) + 1; });
+		rows.forEach((r) => {
+			const dayKey = new Date(r.timestamp).toDateString();
+			if (dayKey !== lastDay) {
+				lastDay = dayKey;
+				const rel = dayLabel(r.timestamp);
+				const cls = rel === 'Today' ? '' : rel === 'Yesterday' ? ' yesterday' : ' older';
+				const longDate = new Date(r.timestamp).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+				html += `<div class="feed-day"><span class="badge${cls}">${esc(rel || 'Earlier')}</span>${esc(longDate)}<span style="margin-left:auto;font-weight:600;color:var(--text-faint)">${perDay[dayKey]} shown</span></div>`;
+			}
+			const t = fmtLogTime(r.timestamp);
+			const sev = r.level === 'FATAL' ? ' fat' : r.level === 'ERROR' ? ' err' : r.level === 'WARN' ? ' wrn' : '';
+			html += `<div class="feed-row${sev}${feed.fresh.has(r.id) ? ' new' : ''}" data-id="${r.id}" title="Click for details">
+				<div class="feed-time"><div class="t">${esc(t.time)}<small>${t.ms}</small></div><div class="d">${t.rel ? '<b>' + esc(t.rel) + '</b> · ' : ''}${esc(t.full)}</div></div>
+				<div><span class="lvl L-${esc(r.level)}">${esc(r.level)}</span></div>
+				<div class="feed-svc">${esc(r.service)}</div>
+				<div class="feed-msg">${esc(r.message)}</div>
+				<div class="feed-ago" data-ts="${r.timestamp}">${agoShort(r.timestamp)}</div>
+			</div>${feed.open.has(r.id) ? feedDetail(r) : ''}`;
+		});
+		box.innerHTML = html || '<div class="empty">No logs match the stream filter yet.</div>';
+		feed.fresh.clear();
+		$('feedPause').textContent = feed.paused ? `Resume${feed.buffer.length ? ' (' + feed.buffer.length + ')' : ''}` : 'Pause';
+	}
+
+	function feedDetail(r) {
+		const f = (k, v) => `<div><div class="k">${k}</div><div class="v">${v == null || v === '' ? '—' : esc(v)}</div></div>`;
+		return `<div class="feed-detail"><div class="detail-grid">
+			${f('When', new Date(r.timestamp).toLocaleString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }))}
+			${f('Format', r.formatLabel)}${f('Category', r.category)}${f('Trace ID', r.traceId)}${f('Host', r.host)}${f('Client IP', r.clientIp)}
+		</div><pre class="raw">${esc(r.rawLine)}</pre></div>`;
+	}
+
+	function setFeedStatus(kind) {
+		const map = { ok: ['#10b981', 'Connected · real-time'], retry: ['#f59e0b', 'Reconnecting…'], off: ['#94a3b8', 'Disconnected'] };
+		const [color, text] = map[kind];
+		$('feedStatus').innerHTML = `<span class="dot" style="background:${color}${kind === 'ok' ? ';box-shadow:0 0 0 3px rgba(16,185,129,.2)' : ''}"></span>${text}`;
+	}
+
+	async function backfillFeed() {
+		try {
+			const page = await api('/api/logs?range=all&sort=id&dir=desc&size=80');
+			addToFeed(page.content, false);
+		} catch (e) { /* the stream will fill it */ }
+	}
+
+	function connectFeed() {
+		if (!window.EventSource) { setFeedStatus('off'); return; }
+		const es = new EventSource('/api/logs/stream');
+		feed.es = es;
+		es.addEventListener('open', () => {
+			setFeedStatus('ok');
+			if (feed.everConnected) backfillFeed(); // fill any gap after a reconnect
+			feed.everConnected = true;
+		});
+		es.addEventListener('logs', (ev) => {
+			try { addToFeed(JSON.parse(ev.data), true); } catch (e) { /* ignore malformed */ }
+		});
+		es.addEventListener('error', () => setFeedStatus(es.readyState === EventSource.CLOSED ? 'off' : 'retry'));
+	}
+
+	function initFeed() {
+		$('feedLevel').addEventListener('change', (e) => { feed.minRank = Number(e.target.value); renderFeed(); });
+		let t;
+		$('feedFilter').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { feed.filter = e.target.value.trim(); renderFeed(); }, 200); });
+		$('feedPause').addEventListener('click', () => {
+			feed.paused = !feed.paused;
+			if (!feed.paused) flushBuffer(); else renderFeed();
+		});
+		$('feed').addEventListener('click', (ev) => {
+			if (ev.target.closest('#feedFlush')) { feed.paused = false; flushBuffer(); return; }
+			const row = ev.target.closest('.feed-row');
+			if (!row) return;
+			const id = Number(row.dataset.id);
+			feed.open.has(id) ? feed.open.delete(id) : feed.open.add(id);
+			renderFeed();
+		});
+		$('feed').addEventListener('scroll', () => { if ($('feed').scrollTop <= 40 && feed.buffer.length && !feed.paused) flushBuffer(); });
+		setInterval(() => {
+			document.querySelectorAll('.feed-ago').forEach((el) => { el.textContent = agoShort(Number(el.dataset.ts)); });
+			const cutoff = Date.now() - 60000;
+			const perMin = feed.items.filter((r) => r.timestamp >= cutoff).length + feed.buffer.filter((r) => r.timestamp >= cutoff).length;
+			$('feedRate').textContent = `${perMin} events/min`;
+		}, 1000);
+		backfillFeed().then(connectFeed);
+	}
+
+	// shared with report.js (PDF export)
+	window.LA = {
+		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
+		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange,
+		RANGE_LABEL, charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
+	};
+
+	// ==========================================================
 	// BOOT
 	// ==========================================================
 	initEvents();
+	initLayout();
+	initFeed();
 	syncExplorerControls();
 	refreshFacets();
 	refreshDashboard();

@@ -30,6 +30,8 @@ import com.anishka.log_analyzer.service.DashboardService;
 import com.anishka.log_analyzer.service.LogIngestionService;
 import com.anishka.log_analyzer.service.LogQueryService;
 import com.anishka.log_analyzer.simulator.LiveLogSimulator;
+import com.anishka.log_analyzer.stream.LogStreamBroadcaster;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api")
@@ -41,9 +43,11 @@ public class LogApiController {
 	private final LogQueryService queries;
 	private final LogIngestionService ingestion;
 	private final LiveLogSimulator simulator;
+	private final LogStreamBroadcaster broadcaster;
 
 	public LogApiController(DashboardService dashboard, LogQueryService queries, LogIngestionService ingestion,
-			LiveLogSimulator simulator) {
+			LiveLogSimulator simulator, LogStreamBroadcaster broadcaster) {
+		this.broadcaster = broadcaster;
 		this.dashboard = dashboard;
 		this.queries = queries;
 		this.ingestion = ingestion;
@@ -63,6 +67,12 @@ public class LogApiController {
 	@GetMapping("/logs")
 	public PageResponse<LogRecordDto> logs(LogQuery query) {
 		return queries.search(query);
+	}
+
+	/** Real-time feed: every newly stored log is pushed as a Server-Sent Event named "logs". */
+	@GetMapping(value = "/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public SseEmitter stream() {
+		return broadcaster.subscribe();
 	}
 
 	@GetMapping("/logs/{id}")

@@ -40,6 +40,14 @@
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9z" /></svg>
 					<span class="hide-sm">Simulate incident</span>
 				</button>
+				<button class="btn" id="customizeBtn" title="Add, remove or reorder widgets">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
+					<span class="hide-sm">Customize</span>
+				</button>
+				<button class="btn primary" id="pdfBtn" title="Download the dashboard as a PDF report">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v6M9 15l3 3 3-3"/></svg>
+					<span class="hide-sm">Export PDF</span>
+				</button>
 				<a class="btn" href="/parser" title="Paste any log format and see how it's parsed">
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6" /></svg>
 					<span class="hide-sm">Parser</span>
@@ -67,7 +75,7 @@
 		<div class="grid">
 
 			<!-- ============ KPI CARDS ============ -->
-			<section class="card kpi span-3" style="--c: var(--total); animation-delay: .00s">
+			<section data-widget="kpi-total" class="card kpi span-3" style="--c: var(--total); animation-delay: .00s">
 				<div class="kpi-top">
 					<span class="kpi-label">Total Logs</span>
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10" /></svg></span>
@@ -77,7 +85,7 @@
 				<div class="kpi-foot"><span>Events ingested</span><span class="kpi-share" id="kpiRate">—</span></div>
 			</section>
 
-			<section class="card kpi span-3" style="--c: var(--info); animation-delay: .06s">
+			<section data-widget="kpi-info" class="card kpi span-3" style="--c: var(--info); animation-delay: .06s">
 				<div class="kpi-top">
 					<span class="kpi-label">Info</span>
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg></span>
@@ -87,7 +95,7 @@
 				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="infoShare">—</span></div>
 			</section>
 
-			<section class="card kpi span-3" style="--c: var(--warn); animation-delay: .12s">
+			<section data-widget="kpi-warn" class="card kpi span-3" style="--c: var(--warn); animation-delay: .12s">
 				<div class="kpi-top">
 					<span class="kpi-label">Warnings</span>
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19z" /><path d="M12 10v4M12 17h.01" /></svg></span>
@@ -97,7 +105,7 @@
 				<div class="kpi-foot"><span>of total volume</span><span class="kpi-share" id="warnShare">—</span></div>
 			</section>
 
-			<section class="card kpi span-3" style="--c: var(--error); animation-delay: .18s">
+			<section data-widget="kpi-error" class="card kpi span-3" style="--c: var(--error); animation-delay: .18s">
 				<div class="kpi-top">
 					<span class="kpi-label">Errors</span>
 					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M15 9l-6 6M9 9l6 6" /></svg></span>
@@ -107,8 +115,49 @@
 				<div class="kpi-foot"><span id="fatalNote">incl. fatal</span><span class="kpi-share" id="errorShare">—</span></div>
 			</section>
 
+			<!-- ============ OPTIONAL KPIs (add via Customize) ============ -->
+			<section data-widget="kpi-throughput" class="card kpi span-3" style="--c: #0ea5e9">
+				<div class="kpi-top">
+					<span class="kpi-label">Throughput</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiThroughput">—</div>
+				<div class="meter"><span id="throughputMeter"></span></div>
+				<div class="kpi-foot"><span>events / min (avg)</span><span class="kpi-share" id="throughputPeak">—</span></div>
+			</section>
+
+			<section data-widget="kpi-fatal" class="card kpi span-3" style="--c: var(--fatal)">
+				<div class="kpi-top">
+					<span class="kpi-label">Fatal Events</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiFatal">—</div>
+				<div class="meter"><span id="fatalMeter"></span></div>
+				<div class="kpi-foot"><span>system-critical failures</span><span class="kpi-share" id="fatalShare">—</span></div>
+			</section>
+
+			<section data-widget="kpi-services" class="card kpi span-3" style="--c: #059669">
+				<div class="kpi-top">
+					<span class="kpi-label">Healthy Services</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiServices">—</div>
+				<div class="meter"><span id="servicesMeter"></span></div>
+				<div class="kpi-foot"><span id="servicesNote">services reporting</span><span class="kpi-share" id="servicesShare">—</span></div>
+			</section>
+
+			<section data-widget="kpi-incidents" class="card kpi span-3" style="--c: #e11d48">
+				<div class="kpi-top">
+					<span class="kpi-label">Open Incidents</span>
+					<span class="kpi-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
+				</div>
+				<div class="kpi-value" id="kpiIncidents">—</div>
+				<div class="meter"><span id="incidentsMeter"></span></div>
+				<div class="kpi-foot"><span>critical + high categories</span><span class="kpi-share" id="incidentsTop">—</span></div>
+			</section>
+
 			<!-- ============ HEALTH SCORE ============ -->
-			<section class="card span-4" style="animation-delay: .24s">
+			<section data-widget="health" class="card span-4" style="animation-delay: .24s">
 				<div class="card-head">
 					<div>
 						<div class="card-title">System Health Score</div>
@@ -143,7 +192,7 @@
 			</section>
 
 			<!-- ============ ERROR TREND ============ -->
-			<section class="card span-8" style="animation-delay: .30s">
+			<section data-widget="trend" class="card span-8" style="animation-delay: .30s">
 				<div class="card-head">
 					<div>
 						<div class="card-title">Error Trend Timeline</div>
@@ -162,8 +211,32 @@
 				</div>
 			</section>
 
+			<!-- ============ LIVE LOG STREAM ============ -->
+			<section data-widget="livefeed" class="card span-12" style="animation-delay: .33s">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Live Log Stream</div>
+						<div class="card-sub">Newest first, pushed from H2 the instant a log is stored · times in your local zone</div>
+					</div>
+					<div class="feed-controls">
+						<span class="chip" id="feedStatus"><span class="dot" style="background:var(--text-faint)"></span>Connecting…</span>
+						<span class="chip" id="feedRate">— events/min</span>
+						<select class="input" id="feedLevel" aria-label="Minimum level">
+							<option value="0">All levels</option>
+							<option value="3">Warnings &amp; above</option>
+							<option value="4">Errors only</option>
+						</select>
+						<label class="search small"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" id="feedFilter" placeholder="Filter stream…" autocomplete="off"></label>
+						<button class="btn small" id="feedPause">Pause</button>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="feed" id="feed"><div class="empty">Waiting for logs…</div></div>
+				</div>
+			</section>
+
 			<!-- ============ DISTRIBUTION ============ -->
-			<section class="card span-4" style="animation-delay: .36s">
+			<section data-widget="donut" class="card span-4" style="animation-delay: .36s">
 				<div class="card-head">
 					<div>
 						<div class="card-title">Log Level Distribution</div>
@@ -180,7 +253,7 @@
 			</section>
 
 			<!-- ============ TOP ERROR CATEGORIES ============ -->
-			<section class="card span-8" style="animation-delay: .42s">
+			<section data-widget="categories" class="card span-8" style="animation-delay: .42s">
 				<div class="card-head">
 					<div>
 						<div class="card-title">Top Error Categories</div>
@@ -194,7 +267,7 @@
 			</section>
 
 			<!-- ============ CRITICAL INCIDENTS ============ -->
-			<section class="card span-5" style="animation-delay: .48s">
+			<section data-widget="incidents" class="card span-5" style="animation-delay: .48s">
 				<div class="card-head">
 					<div>
 						<div class="card-title">Top Critical Incidents</div>
@@ -208,7 +281,7 @@
 			</section>
 
 			<!-- ============ SERVICE HEALTH ============ -->
-			<section class="card span-7" style="animation-delay: .54s">
+			<section data-widget="services" class="card span-7" style="animation-delay: .54s">
 				<div class="card-head">
 					<div>
 						<div class="card-title">Service Health</div>
@@ -233,8 +306,60 @@
 				</div>
 			</section>
 
+			<!-- ============ OPTIONAL CHARTS (add via Customize) ============ -->
+			<section data-widget="volume" class="card span-8">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Event Volume</div>
+						<div class="card-sub" id="volumeSub">Events per bucket by severity</div>
+					</div>
+					<div class="chart-legend">
+						<span><i class="dot" style="background:#10b981"></i>Info/Debug</span>
+						<span><i class="dot" style="background:#f59e0b"></i>Warn</span>
+						<span><i class="dot" style="background:#ef4444"></i>Error</span>
+					</div>
+				</div>
+				<div class="card-body"><div class="chart-wrap"><canvas id="volumeChart"></canvas></div></div>
+			</section>
+
+			<section data-widget="formats" class="card span-4">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Log Format Mix</div>
+						<div class="card-sub">Formats auto-detected by the parser</div>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="donut-wrap"><canvas id="formatChart"></canvas>
+						<div class="donut-center"><div><div class="v" id="formatCount">—</div><div class="k">Formats</div></div></div>
+					</div>
+					<div class="legend" id="formatLegend"></div>
+				</div>
+			</section>
+
+			<section data-widget="errorrate" class="card span-6">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Error Rate Over Time</div>
+						<div class="card-sub">Errors as % of all events per bucket · dashed line = 3% SLO</div>
+					</div>
+					<span class="chip" id="errorRateChip">—</span>
+				</div>
+				<div class="card-body"><div class="chart-wrap"><canvas id="errorRateChart"></canvas></div></div>
+			</section>
+
+			<section data-widget="svcerrors" class="card span-6">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Errors by Service</div>
+						<div class="card-sub">Error and warning counts per service · click a bar to filter</div>
+					</div>
+				</div>
+				<div class="card-body"><div class="chart-wrap"><canvas id="svcErrorChart"></canvas></div></div>
+			</section>
+
 			<!-- ============ LOG EXPLORER ============ -->
-			<section class="card span-12" style="animation-delay: .60s" id="explorer">
+			<section data-widget="explorer" class="card span-12" style="animation-delay: .60s" id="explorer">
 				<div class="card-head">
 					<div>
 						<div class="card-title">Log Explorer</div>
@@ -292,9 +417,28 @@
 		<footer>AI Log Analyzer · Spring Boot + H2 · <a href="/h2-console" target="_blank" rel="noopener">H2 console</a> · <a href="/parser">Parser playground</a></footer>
 	</main>
 
+	<!-- ============ CUSTOMIZE DRAWER ============ -->
+	<div class="drawer-backdrop" id="drawerBackdrop"></div>
+	<aside class="drawer" id="drawer" aria-label="Customize dashboard" aria-hidden="true">
+		<div class="drawer-head">
+			<div>
+				<div class="card-title" style="font-size:16px">Customize dashboard</div>
+				<div class="card-sub">Toggle widgets on or off and reorder them. Saved in this browser.</div>
+			</div>
+			<button class="btn small" id="drawerClose" aria-label="Close">✕</button>
+		</div>
+		<div class="drawer-body" id="widgetList"></div>
+		<div class="drawer-foot">
+			<button class="btn small" id="layoutReset">Reset to default</button>
+			<button class="btn small" id="layoutAll">Show all</button>
+			<button class="btn primary small" id="drawerDone">Done</button>
+		</div>
+	</aside>
+
 	<div class="toast" id="toast"></div>
 
 	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
+	<script th:src="@{/js/report.js}" src="/js/report.js"></script>
 </body>
 
 </html>

@@ -32,6 +32,14 @@ After that, new logs stream in every 2 seconds.
   Buckets are aligned to the viewer's time zone. Click a chart, incident or service to drill into its logs.
 - **Log explorer:** multi-word search (message, trace ID, host, IP, logger…), level, service and category filters,
   server-side sorting on every column, paging, live tail, the raw line on click, and CSV export.
+- **Live log stream:** a real-time feed pushed over Server-Sent Events (`/api/logs/stream`) the moment a log is committed
+  to H2. Each row shows time, day and date with Today / Yesterday / weekday labels, grouped by day. It supports pause,
+  level and text filters, and a click for the raw line.
+- **Customisable dashboard:** add, remove and reorder 20 widgets (8 KPIs, 8 charts, live feed and tables) from the
+  Customize drawer. The layout is saved in the browser.
+- **PDF export:** a professional multi-page A4 report with a cover page, executive summary, auto-generated key findings,
+  a contents list with page numbers, high-resolution charts, colour-coded tables, and branded headers/footers with
+  "Page X of Y". It follows the widgets you have visible.
 - **Demo controls:** pause or resume the live stream, and "Simulate incident".
 
 ## REST API
@@ -39,6 +47,7 @@ After that, new logs stream in every 2 seconds.
 ```
 GET  /api/dashboard?range=24h&tz=330
 GET  /api/logs?q=npci timeout&levels=ERROR,FATAL&service=upi-switch&sort=timestamp&dir=desc&page=0&size=50
+GET  /api/logs/stream          (Server-Sent Events: "logs" events with newly stored records)
 GET  /api/logs/{id}            GET /api/logs/facets          GET /api/logs/export?...
 POST /api/logs/ingest?service=my-app   (text/plain body, any format; stored)
 POST /api/logs/parse                   (preview only)

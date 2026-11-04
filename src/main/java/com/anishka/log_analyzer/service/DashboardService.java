@@ -15,9 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.anishka.log_analyzer.dto.CategoryStat;
 import com.anishka.log_analyzer.dto.DashboardSummary;
+import com.anishka.log_analyzer.dto.FormatStat;
 import com.anishka.log_analyzer.dto.LevelTotals;
 import com.anishka.log_analyzer.dto.ServiceStat;
 import com.anishka.log_analyzer.dto.TrendPoint;
+import com.anishka.log_analyzer.parser.LogFormat;
 import com.anishka.log_analyzer.repository.LogRecordRepository;
 import com.anishka.log_analyzer.simulator.LiveLogSimulator;
 
@@ -64,7 +66,7 @@ public class DashboardService {
 
 		LocalDateTime latest = repository.latestTimestamp();
 		return new DashboardSummary(range.code(), range.bucketMinutes(), epoch(from), epoch(now), totals,
-				round2(health), round2(errorRate), round2(warnRate), trend, categories, services,
+				round2(health), round2(errorRate), round2(warnRate), trend, categories, services, formats(from, to),
 				latest == null ? null : epoch(latest), System.currentTimeMillis(), simulator.status());
 	}
 
@@ -140,6 +142,21 @@ public class DashboardService {
 					epoch((LocalDateTime) row[4])));
 		}
 		out.sort(Comparator.comparingDouble(ServiceStat::errorRate).reversed());
+		return out;
+	}
+
+	private List<FormatStat> formats(LocalDateTime from, LocalDateTime to) {
+		List<FormatStat> out = new ArrayList<>();
+		for (Object[] row : repository.formatCounts(from, to)) {
+			String f = (String) row[0];
+			String label;
+			try {
+				label = LogFormat.valueOf(f).getLabel();
+			} catch (IllegalArgumentException | NullPointerException e) {
+				label = String.valueOf(f);
+			}
+			out.add(new FormatStat(f, label, ((Number) row[1]).longValue()));
+		}
 		return out;
 	}
 

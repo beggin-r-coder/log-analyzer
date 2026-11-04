@@ -28,7 +28,7 @@ public class LogQueryService {
 	/** UI column -> entity property. Anything else is rejected, so sorting is injection-safe. */
 	private static final Map<String, String> SORTABLE = Map.of("timestamp", "timestamp", "level", "levelRank",
 			"service", "service", "category", "errorCategory", "message", "message", "host", "host", "format",
-			"sourceFormat", "traceId", "traceId");
+			"sourceFormat", "traceId", "traceId", "id", "id");
 
 	public static final int MAX_PAGE_SIZE = 200;
 	public static final int MAX_EXPORT_ROWS = 10_000;
