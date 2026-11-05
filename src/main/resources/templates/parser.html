@@ -27,14 +27,22 @@
 <body>
 	<header class="topbar">
 		<div class="topbar-inner">
-			<a class="brand" href="/">
-				<div class="brand-logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4" /></svg></div>
-				<div>
-					<div class="brand-title">AI Log Analyzer</div>
-					<div class="brand-sub"><span th:text="${brandName}">NovaBank</span> · Universal log parser playground</div>
-				</div>
+			<a class="brand" href="/" aria-label="Log Analyzer home">
+				<svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect width="22" height="22" rx="5" fill="#1e293b"/><path d="M5 12.5h2.6l2-5 2.8 8 2-4.5H17" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				<span class="brand-title">Log Analyzer</span>
 			</a>
-			<div class="topbar-actions"><a class="btn" href="/">← Back to dashboard</a></div>
+			<span class="crumb-sep" aria-hidden="true">/</span>
+			<span class="workspace" th:text="${brandName}">NovaBank</span>
+			<span class="env-tag">prod</span>
+			<nav class="nav-tabs" aria-label="Primary">
+				<a href="/">Overview</a>
+				<a href="/#explorer">Logs</a>
+				<a href="/#live">Live stream</a>
+				<a href="/parser" class="active">Parser</a>
+			</nav>
+			<div class="topbar-actions">
+				<a class="btn ghost" href="/h2-console" target="_blank" rel="noopener">H2 console</a>
+			</div>
 		</div>
 	</header>
 

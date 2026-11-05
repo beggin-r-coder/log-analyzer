@@ -689,21 +689,96 @@
 	}
 
 	// ==========================================================
+	// TOP BAR: menus + tab highlighting
+	// ==========================================================
+	function closeMenus(except) {
+		document.querySelectorAll('.menu').forEach((m) => {
+			if (m === except) return;
+			m.hidden = true;
+			const btn = document.querySelector(`[aria-controls="${m.id}"]`);
+			if (btn) btn.setAttribute('aria-expanded', 'false');
+		});
+	}
+
+	function initMenus() {
+		document.querySelectorAll('[aria-haspopup="menu"]').forEach((btn) => {
+			const menu = $(btn.getAttribute('aria-controls'));
+			btn.addEventListener('click', (ev) => {
+				ev.stopPropagation();
+				const open = menu.hidden;
+				closeMenus(menu);
+				menu.hidden = !open;
+				btn.setAttribute('aria-expanded', String(open));
+				if (open) {
+					const first = menu.querySelector('[aria-checked="true"]') || menu.querySelector('button, a');
+					if (first) first.focus();
+				}
+			});
+			menu.addEventListener('click', (ev) => { if (ev.target.closest('a')) closeMenus(); });
+		});
+		document.addEventListener('click', (ev) => { if (!ev.target.closest('.menu')) closeMenus(); });
+		document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeMenus(); });
+	}
+
+	/** Underlines the tab for the section currently in view. */
+	function initScrollSpy() {
+		const tabs = [...document.querySelectorAll('.nav-tabs a[data-nav]')];
+		const update = () => {
+			let current = 'top';
+			// of the sections scrolled into view, the one lowest on the page wins
+			// at the very bottom the last section may never reach the top, so count anything on screen
+			const atBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
+			const line = atBottom ? window.innerHeight : window.innerHeight * 0.4;
+			const reached = ['livefeed', 'explorer'].map(widgetEl)
+				.filter((el) => el && !el.classList.contains('w-hidden') && el.getBoundingClientRect().top < line)
+				.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+			if (reached.length) current = reached[0].dataset.widget;
+			tabs.forEach((t) => t.classList.toggle('active', t.dataset.nav === current));
+		};
+		let raf;
+		window.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); }, { passive: true });
+		update();
+	}
+
+	// ==========================================================
 	// EVENTS
 	// ==========================================================
 	function initEvents() {
-		// range selector
-		document.querySelectorAll('#rangeSeg button').forEach((b) => {
-			b.classList.toggle('active', b.dataset.range === state.range);
+		// dropdown menus in the top bar
+		initMenus();
+
+		// time range dropdown
+		const syncRange = () => {
+			document.querySelectorAll('#rangeMenu [data-range]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.range === state.range)));
+			$('rangeLabel').textContent = RANGE_LABEL[state.range] || state.range;
+			$('rangeShort').textContent = state.range;
+		};
+		syncRange();
+		document.querySelectorAll('#rangeMenu [data-range]').forEach((b) => {
 			b.addEventListener('click', () => {
 				state.range = b.dataset.range;
 				save('range', state.range);
-				document.querySelectorAll('#rangeSeg button').forEach((x) => x.classList.toggle('active', x === b));
+				syncRange();
+				closeMenus();
 				state.explorer.page = 0;
 				refreshDashboard();
 				refreshLogs();
 			});
 		});
+
+		// tabs: jump to a section, re-showing its widget if it was hidden in Customize
+		document.querySelectorAll('.nav-tabs a[data-nav]').forEach((a) => a.addEventListener('click', (ev) => {
+			ev.preventDefault();
+			const target = a.dataset.nav;
+			if (target === 'top') {
+				window.scrollTo({ top: 0, behavior: 'smooth' });
+			} else {
+				if (layout.hidden.has(target)) setWidgetVisible(target, true);
+				widgetEl(target).scrollIntoView({ behavior: 'smooth', block: 'start' });
+			}
+			history.replaceState(null, '', target === 'top' ? location.pathname : a.getAttribute('href'));
+		}));
+		initScrollSpy();
 
 		// level toggles
 		$('levelFilters').innerHTML = LEVELS.map((l) => `<button class="lvl-toggle" data-level="${l}" style="--lc:${LEVEL_COLOR[l]}">${l}</button>`).join('');
@@ -796,6 +871,7 @@
 			} catch (e) { toast('Failed: ' + e.message); }
 		});
 		$('incidentBtn').addEventListener('click', async () => {
+			closeMenus();
 			try {
 				const s = await api('/api/simulator/incident?minutes=5', { method: 'POST' });
 				renderSimulator(s);

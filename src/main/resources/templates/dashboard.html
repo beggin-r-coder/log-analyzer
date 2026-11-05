@@ -17,45 +17,63 @@
 	<!-- ============ TOP BAR ============ -->
 	<header class="topbar">
 		<div class="topbar-inner">
-			<a class="brand" href="/">
-				<div class="brand-logo">
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>
-				</div>
-				<div>
-					<div class="brand-title">AI Log Analyzer</div>
-					<div class="brand-sub"><span th:text="${brandName}">NovaBank</span> · <span th:text="${brandTagline}">BFSI Observability</span></div>
-				</div>
+			<a class="brand" href="/" aria-label="Log Analyzer home">
+				<svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect width="22" height="22" rx="5" fill="#1e293b"/><path d="M5 12.5h2.6l2-5 2.8 8 2-4.5H17" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				<span class="brand-title">Log Analyzer</span>
 			</a>
+			<span class="crumb-sep" aria-hidden="true">/</span>
+			<span class="workspace" th:text="${brandName}">NovaBank</span>
+			<span class="env-tag">prod</span>
+
+			<nav class="nav-tabs" aria-label="Primary">
+				<a href="#" class="active" data-nav="top">Overview</a>
+				<a href="#explorer" data-nav="explorer">Logs</a>
+				<a href="#live" data-nav="livefeed">Live stream</a>
+				<a href="/parser">Parser</a>
+			</nav>
+
 			<div class="topbar-actions">
-				<button class="live-pill" id="livePill" title="Pause / resume the live log stream"><span class="live-dot"></span><span id="liveText">Live</span></button>
-				<span class="timestamp mono" id="timestamp">—</span>
-				<div class="seg" id="rangeSeg" role="group" aria-label="Time range">
-					<button data-range="15m">15m</button>
-					<button data-range="1h">1h</button>
-					<button data-range="6h">6h</button>
-					<button data-range="24h" class="active">24h</button>
-					<button data-range="7d">7d</button>
-				</div>
-				<button class="btn danger" id="incidentBtn" title="Inject a short incident into a random service (demo)">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9z" /></svg>
-					<span class="hide-sm">Simulate incident</span>
+				<button class="live-status" id="livePill" title="Pause or resume the live log stream">
+					<span class="live-dot"></span><span id="liveText">Live</span>
+					<span class="timestamp" id="timestamp">—</span>
 				</button>
-				<button class="btn" id="customizeBtn" title="Add, remove or reorder widgets">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
+
+				<div class="menu-wrap">
+					<button class="btn ghost" id="rangeBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="rangeMenu" title="Time range">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+						<span id="rangeLabel" class="hide-sm">Last 24 hours</span><span id="rangeShort" class="show-sm">24h</span>
+						<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+					</button>
+					<div class="menu" id="rangeMenu" role="menu" hidden>
+						<button role="menuitemradio" data-range="15m">Last 15 minutes</button>
+						<button role="menuitemradio" data-range="1h">Last hour</button>
+						<button role="menuitemradio" data-range="6h">Last 6 hours</button>
+						<button role="menuitemradio" data-range="24h">Last 24 hours</button>
+						<button role="menuitemradio" data-range="7d">Last 7 days</button>
+					</div>
+				</div>
+
+				<button class="btn ghost" id="customizeBtn" title="Add, remove or reorder widgets">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
 					<span class="hide-sm">Customize</span>
 				</button>
-				<button class="btn primary" id="pdfBtn" title="Download the dashboard as a PDF report">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v6M9 15l3 3 3-3"/></svg>
-					<span class="hide-sm">Export PDF</span>
+
+				<button class="btn dark" id="pdfBtn" title="Download the dashboard as a PDF report">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+					<span class="hide-sm">Export</span>
 				</button>
-				<a class="btn" href="/parser" title="Paste any log format and see how it's parsed">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6" /></svg>
-					<span class="hide-sm">Parser</span>
-				</a>
-				<a class="btn hide-sm" href="/h2-console" target="_blank" rel="noopener" title="Open the H2 database console">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>
-					H2
-				</a>
+
+				<div class="menu-wrap">
+					<button class="btn ghost icon" id="moreBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="moreMenu" title="More actions" aria-label="More actions">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+					</button>
+					<div class="menu right" id="moreMenu" role="menu" hidden>
+						<button role="menuitem" id="incidentBtn">Simulate an incident<small>Injects 5 min of errors into one service</small></button>
+						<a role="menuitem" href="/parser">Parser playground<small>Test how any log line is parsed</small></a>
+						<div class="menu-sep"></div>
+						<a role="menuitem" href="/h2-console" target="_blank" rel="noopener">Open H2 console<small>Browse the log_records table</small></a>
+					</div>
+				</div>
 			</div>
 		</div>
 	</header>
@@ -218,7 +236,7 @@
 			</section>
 
 			<!-- ============ LIVE LOG STREAM ============ -->
-			<section data-widget="livefeed" class="card span-12" style="animation-delay: .33s">
+			<section data-widget="livefeed" id="live" class="card span-12" style="animation-delay: .33s">
 				<div class="card-head">
 					<div>
 						<div class="card-title">Live Log Stream</div>
