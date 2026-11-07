@@ -42,11 +42,42 @@ After that, new logs stream in every 2 seconds.
   "Page X of Y". It follows the widgets you have visible.
 - **Demo controls:** pause or resume the live stream, and "Simulate incident".
 
+## AI error analysis (Google Gemini + NLP)
+
+- **AI Error Analysis panel:** a summary, probable root cause, impact, severity with confidence, step-by-step recovery
+  (a checklist), prevention and per-incident cards for all errors in the selected range.
+- **Single-error analysis:** click **Analyze** on any log in the Log Explorer or Live Stream. A side panel shows the
+  NLP context instantly: the error pattern, how often it occurred in 24h, extracted entities, similar errors
+  (TF-IDF) and related events with the same trace ID. One click asks Gemini for root cause and recovery steps.
+  **Copy as ticket** produces Markdown for Jira/ServiceNow.
+- **Local NLP in plain Java:** template mining groups errors into patterns, so Gemini receives about 15 counted
+  patterns instead of thousands of lines. It also does entity extraction, TF-IDF keywords and similarity. Without an
+  API key, an offline playbook of BFSI failure modes is used instead, so the feature still works.
+- **Safety:** emails, card numbers (Luhn-checked), Aadhaar, PAN, phone numbers, client IPs, tokens and passwords are
+  redacted before anything leaves the app. Log text is marked as untrusted in the prompt. Every analysis is stored in
+  the `ai_analyses` table for audit, and repeat requests reuse it instead of paying for another call.
+
+### Setup
+
+1. Create a key at [Google AI Studio](https://aistudio.google.com/apikey).
+2. Set it as an environment variable (never put it in `application.properties` or commit it):
+
+```bash
+export GEMINI_API_KEY="your-key"
+```
+
+On Windows PowerShell use `$env:GEMINI_API_KEY="your-key"`.
+
+3. Optionally choose another model: `export GEMINI_MODEL=gemini-3.5-flash-lite` (cheaper). The default is
+   `gemini-3.8-flash`.
+4. Start the app. The panel's chip changes from "Offline NLP mode" to "Gemini · model".
+
 ## REST API
 
 ```
 GET  /api/dashboard?range=24h&tz=330
 GET  /api/logs?q=npci timeout&levels=ERROR,FATAL&service=upi-switch&sort=timestamp&dir=desc&page=0&size=50
+POST /api/ai/overview?range=24h      POST /api/ai/logs/{id}      GET /api/ai/logs/{id}/context      GET /api/ai/status
 GET  /api/logs/stream          (Server-Sent Events: "logs" events with newly stored records)
 GET  /api/logs/{id}            GET /api/logs/facets          GET /api/logs/export?...
 POST /api/logs/ingest?service=my-app   (text/plain body, any format; stored)

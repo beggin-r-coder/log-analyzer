@@ -606,6 +606,23 @@
 					}
 					break;
 				}
+				case 'aianalysis': {
+					const a = window.LA_AI && window.LA_AI.overview;
+					if (!a) break; // nothing analysed yet: leave the section out
+					ensure(60);
+					sectionTitle('AI error analysis', `${a.source === 'GEMINI' ? 'Gemini (' + a.model + ')' : 'Offline NLP playbook'} · severity ${a.severity}${a.confidence != null ? ' · confidence ' + a.confidence + '%' : ''} · generated ${fmtDT(a.generatedAt)}`);
+					const steps = (a.recoverySteps || []).map((x, n) => `${n + 1}. ${x}`).join('\n');
+					const prev = (a.preventiveActions || []).map((x) => '- ' + x).join('\n');
+					table(['Section', 'Analysis'], [['Summary', a.summary || '-'], ['Probable root cause', a.rootCause || '-'], ['Impact', a.impact || '-'],
+						['Recovery steps', steps || '-'], ['Prevention', prev || '-']].concat((a.evidence || []).length ? [['Evidence', a.evidence.map((x) => '- ' + x).join('\n')]] : []),
+						{ styles: { fontSize: 8.4, cellPadding: { top: 3, bottom: 3, left: 3.5, right: 3.5 } }, columnStyles: { 0: { cellWidth: 36, fontStyle: 'bold', textColor: INK } } });
+					if ((a.incidents || []).length) {
+						ensure(30);
+						table(['Incident', 'Severity', 'Root cause', 'Do first'], a.incidents.map((x) => [x.title + (x.pattern ? ' (pattern #' + x.pattern + ')' : ''), x.severity, x.rootCause, x.recovery]),
+							{ styles: { fontSize: 7.6 }, columnStyles: { 0: { cellWidth: 40, fontStyle: 'bold' }, 1: { cellWidth: 18 } }, didParseCell: badgeCells(1) });
+					}
+					break;
+				}
 				case 'incidents':
 					ensure(40);
 					sectionTitle('Top critical incidents', 'Error categories ranked by severity (errors per hour) and volume');

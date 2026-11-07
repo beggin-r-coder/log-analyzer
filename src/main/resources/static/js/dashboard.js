@@ -632,6 +632,7 @@
 				${f('Logger', r.logger)}
 				${f('Record ID', r.id)}
 			</div>
+			<div class="detail-actions">${analyzeButton(r)}</div>
 			<pre class="raw">${esc(r.rawLine)}</pre>
 		</td></tr>`;
 	}
@@ -760,6 +761,7 @@
 				save('range', state.range);
 				syncRange();
 				closeMenus();
+				document.dispatchEvent(new CustomEvent('la:range', { detail: state.range }));
 				state.explorer.page = 0;
 				refreshDashboard();
 				refreshLogs();
@@ -902,12 +904,13 @@
 		{ id: 'svcerrors', group: 'Charts', name: 'Errors by service', desc: 'Error and warning counts per service', icon: '▥' },
 		{ id: 'formats', group: 'Charts', name: 'Log format mix', desc: 'Formats detected by the universal parser', icon: '{}' },
 		{ id: 'livefeed', group: 'Live & tables', name: 'Live log stream', desc: 'Real-time feed pushed from the database', icon: '●' },
+		{ id: 'aianalysis', group: 'Live & tables', name: 'AI error analysis', desc: 'Gemini root cause, impact and recovery steps', icon: '✦' },
 		{ id: 'incidents', group: 'Live & tables', name: 'Top critical incidents', desc: 'Categories ranked by severity', icon: '▲' },
 		{ id: 'services', group: 'Live & tables', name: 'Service health', desc: 'Per-service volume and error rate', icon: '☰' },
 		{ id: 'explorer', group: 'Live & tables', name: 'Log explorer', desc: 'Search, filter, sort and export logs', icon: '⌕' }
 	];
 	const DEFAULT_ORDER = ['kpi-total', 'kpi-info', 'kpi-warn', 'kpi-error', 'kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents',
-		'health', 'trend', 'livefeed', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'incidents', 'services', 'explorer'];
+		'health', 'trend', 'livefeed', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'aianalysis', 'incidents', 'services', 'explorer'];
 	const DEFAULT_HIDDEN = ['kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'volume', 'formats', 'errorrate', 'svcerrors'];
 	const LAYOUT_KEY = 'layout.v1';
 
@@ -1125,7 +1128,13 @@
 		return `<div class="feed-detail"><div class="detail-grid">
 			${f('When', new Date(r.timestamp).toLocaleString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }))}
 			${f('Format', r.formatLabel)}${f('Category', r.category)}${f('Trace ID', r.traceId)}${f('Host', r.host)}${f('Client IP', r.clientIp)}
-		</div><pre class="raw">${esc(r.rawLine)}</pre></div>`;
+		</div><div class="detail-actions">${analyzeButton(r)}</div><pre class="raw">${esc(r.rawLine)}</pre></div>`;
+	}
+
+	/** Opens the single-error analysis panel (handled by ai.js). Offered for every level; errors are emphasised. */
+	function analyzeButton(r) {
+		const strong = r.level === 'ERROR' || r.level === 'FATAL' || r.level === 'WARN';
+		return `<button class="btn small ${strong ? 'dark' : 'ghost'}" data-analyze="${r.id}">✦ Analyze${strong ? ' with AI' : ''}</button>`;
 	}
 
 	function setFeedStatus(kind) {
@@ -1185,7 +1194,7 @@
 	// shared with report.js (PDF export)
 	window.LA = {
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
-		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange,
+		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange, filterExplorer, esc, agoShort, ago,
 		RANGE_LABEL, delta, charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
 	};
 

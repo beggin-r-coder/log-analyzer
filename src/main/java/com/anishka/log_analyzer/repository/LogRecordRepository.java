@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -58,6 +59,18 @@ public interface LogRecordRepository extends JpaRepository<LogRecord, Long>, Jpa
 			@Param("bucket") int bucketMinutes, @Param("shift") int shiftMinutes);
 
 	Optional<LogRecord> findTopByOrderByTimestampAsc();
+
+	/** Newest records at or above a severity, for NLP clustering. */
+	List<LogRecord> findByTimestampGreaterThanEqualAndLevelRankGreaterThanEqualOrderByTimestampDesc(LocalDateTime from,
+			int minRank, Pageable page);
+
+	/** Other events of the same request, for single-error context. */
+	List<LogRecord> findTop25ByTraceIdAndTimestampBetweenOrderByTimestampAsc(String traceId, LocalDateTime from,
+			LocalDateTime to);
+
+	/** Warnings/errors of the same service around an event. */
+	List<LogRecord> findTop300ByServiceAndLevelRankGreaterThanEqualAndTimestampBetweenOrderByTimestampAsc(String service,
+			int minRank, LocalDateTime from, LocalDateTime to);
 
 	/** [sourceFormat, count] */
 	@Query("select r.sourceFormat, count(r) from LogRecord r where r.timestamp >= :from and r.timestamp < :to group by r.sourceFormat order by count(r) desc")
