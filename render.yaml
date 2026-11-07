@@ -1,0 +1,21 @@
+# Render Blueprint: New > Blueprint, pick this repository.
+# You will be asked for the values marked sync: false.
+services:
+  - type: web
+    name: log-analyzer
+    runtime: docker
+    plan: starter            # a persistent disk needs a paid plan
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: APP_USERNAME
+        value: admin
+      - key: APP_PASSWORD
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: BRAND_NAME
+        value: NovaBank
+    disk:
+      name: log-data
+      mountPath: /app/data
+      sizeGB: 1

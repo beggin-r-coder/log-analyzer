@@ -74,10 +74,13 @@ public class AiAnalysisService {
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final Duration cacheFor;
 	private final Map<String, Object> locks = new ConcurrentHashMap<>();
+	private final int maxCallsPerHour;
+	private final java.util.Deque<Long> recentCalls = new java.util.ArrayDeque<>();
 
 	public AiAnalysisService(GeminiClient gemini, LogNlpService nlp, PiiRedactor redactor, RecoveryPlaybook playbook,
 			LogRecordRepository logs, AiAnalysisRepository analyses, DashboardService dashboard,
-			@Value("${ai.cache-minutes:30}") int cacheMinutes) {
+			@Value("${ai.cache-minutes:30}") int cacheMinutes, @Value("${ai.max-calls-per-hour:60}") int maxCallsPerHour) {
+		this.maxCallsPerHour = maxCallsPerHour;
 		this.gemini = gemini;
 		this.nlp = nlp;
 		this.redactor = redactor;
@@ -95,6 +98,7 @@ public class AiAnalysisService {
 		s.put("model", gemini.getModel());
 		s.put("mode", gemini.isConfigured() ? "GEMINI" : "NLP");
 		s.put("redaction", true);
+		s.put("maxCallsPerHour", maxCallsPerHour);
 		return s;
 	}
 
@@ -357,6 +361,9 @@ public class AiAnalysisService {
 		AiInsight result;
 		if (!gemini.isConfigured()) {
 			result = withNote(fallback.get(), "Gemini is not configured (set GEMINI_API_KEY). This is the offline NLP analysis.");
+		} else if (!allowCall()) {
+			result = withNote(fallback.get(), "The Gemini budget of " + maxCallsPerHour
+					+ " calls per hour is used up (AI_MAX_CALLS_PER_HOUR). Showing the offline NLP analysis instead.");
 		} else {
 			PiiRedactor.Result red = redactor.redact(prompt);
 			try {
@@ -369,6 +376,19 @@ public class AiAnalysisService {
 		}
 		save(result);
 		return result;
+	}
+
+	/** Sliding one-hour window over paid Gemini calls. */
+	private synchronized boolean allowCall() {
+		long now = System.currentTimeMillis();
+		while (!recentCalls.isEmpty() && now - recentCalls.peekFirst() > 3_600_000L) {
+			recentCalls.pollFirst();
+		}
+		if (maxCallsPerHour > 0 && recentCalls.size() >= maxCallsPerHour) {
+			return false;
+		}
+		recentCalls.addLast(now);
+		return true;
 	}
 
 	private AiInsight fromGemini(String scope, Long logId, String range, GeminiClient.Reply reply, PiiRedactor.Result red,

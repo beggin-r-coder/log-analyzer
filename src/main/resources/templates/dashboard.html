@@ -8,6 +8,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+	<link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}" href="/favicon.svg">
 	<link rel="stylesheet" th:href="@{/css/dashboard.css}" href="/css/dashboard.css">
 	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -70,8 +71,16 @@
 					<div class="menu right" id="moreMenu" role="menu" hidden>
 						<button role="menuitem" id="incidentBtn">Simulate an incident<small>Injects 5 min of errors into one service</small></button>
 						<a role="menuitem" href="/parser">Parser playground<small>Test how any log line is parsed</small></a>
-						<div class="menu-sep"></div>
-						<a role="menuitem" href="/h2-console" target="_blank" rel="noopener">Open H2 console<small>Browse the log_records table</small></a>
+						<th:block th:if="${h2Console}">
+							<div class="menu-sep"></div>
+							<a role="menuitem" href="/h2-console" target="_blank" rel="noopener">Open H2 console<small>Browse the log_records table</small></a>
+						</th:block>
+						<th:block th:if="${username}">
+							<div class="menu-sep"></div>
+							<form th:action="@{/logout}" method="post" action="/logout">
+								<button role="menuitem" type="submit">Sign out<small th:text="'Signed in as ' + ${username}">Signed in as admin</small></button>
+							</form>
+						</th:block>
 					</div>
 				</div>
 			</div>
@@ -427,6 +436,13 @@
 					<div class="level-filters" id="levelFilters"></div>
 					<select class="input" id="serviceFilter" aria-label="Service"><option value="">All services</option></select>
 					<select class="input" id="categoryFilter" aria-label="Category"><option value="">All categories</option></select>
+					<select class="input mobile-sort" id="mobileSort" aria-label="Sort logs">
+						<option value="timestamp:desc">Newest first</option>
+						<option value="timestamp:asc">Oldest first</option>
+						<option value="level:desc">Most severe first</option>
+						<option value="service:asc">Service A–Z</option>
+						<option value="category:asc">Category A–Z</option>
+					</select>
 				</div>
 				<div class="card-body" style="padding-top:12px">
 					<div class="table-wrap explorer">
@@ -462,7 +478,7 @@
 
 		</div>
 
-		<footer>AI Log Analyzer · Spring Boot + H2 · <a href="/h2-console" target="_blank" rel="noopener">H2 console</a> · <a href="/parser">Parser playground</a></footer>
+		<footer>AI Log Analyzer · Spring Boot + H2<th:block th:if="${h2Console}"> · <a href="/h2-console" target="_blank" rel="noopener">H2 console</a></th:block> · <a href="/parser">Parser playground</a></footer>
 	</main>
 
 	<!-- ============ CUSTOMIZE DRAWER ============ -->
@@ -501,6 +517,7 @@
 
 	<div class="toast" id="toast"></div>
 
+	<script th:src="@{/js/http.js}" src="/js/http.js"></script>
 	<script th:inline="javascript">window.APP_BRAND = { name: /*[[${brandName}]]*/ "NovaBank", tagline: /*[[${brandTagline}]]*/ "BFSI Observability" };</script>
 	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
 	<script th:src="@{/js/ai.js}" src="/js/ai.js"></script>

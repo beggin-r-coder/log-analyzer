@@ -94,6 +94,21 @@ public class LiveLogSimulator {
 			return;
 		}
 		seeding = true;
+		// in the background, so the app reports healthy to the host immediately
+		Thread seeder = new Thread(() -> {
+			try {
+				seed();
+			} catch (RuntimeException e) {
+				log.error("Seeding demo data failed", e);
+			} finally {
+				seeding = false;
+			}
+		}, "log-seeder");
+		seeder.setDaemon(true);
+		seeder.start();
+	}
+
+	private void seed() {
 		long started = System.currentTimeMillis();
 		LocalDateTime end = LocalDateTime.now();
 		LocalDateTime start = end.minusDays(seedDays).truncatedTo(ChronoUnit.MINUTES);
@@ -123,7 +138,6 @@ public class LiveLogSimulator {
 			}
 		}
 		total += flush(batch);
-		seeding = false;
 		log.info("Seeded {} log records in {} ms", total, System.currentTimeMillis() - started);
 	}
 

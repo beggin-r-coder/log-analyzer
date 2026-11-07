@@ -201,7 +201,12 @@
 			plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${nf.format(c.raw)} errors · click to view logs` } } },
 			scales: {
 				x: { beginAtZero: true, grid: { color: C.grid, drawTicks: false }, border: { display: false }, ticks: { padding: 8, color: C.faint, precision: 0 } },
-				y: { grid: { display: false }, border: { display: false }, ticks: { color: '#334155', font: { size: 12 }, padding: 10 } }
+				y: {
+					grid: { display: false }, border: { display: false }, ticks: {
+						color: '#334155', font: { size: 12 }, padding: 10,
+						callback: function (v) { const s = this.getLabelForValue(v), max = this.chart.width < 520 ? 15 : 32; return s.length > max ? s.slice(0, max - 1) + '…' : s; }
+					}
+				}
 			}
 		}
 	});
@@ -603,7 +608,7 @@
 				<td class="time">${esc(t.time)}<span class="d">${t.rel ? '<b style="color:#4f46e5">' + esc(t.rel) + '</b> · ' : ''}${esc(t.full)}</span></td>
 				<td><span class="lvl L-${esc(r.level)}">${esc(r.level)}</span></td>
 				<td class="svc">${highlight(r.service)}</td>
-				<td class="cat">${r.category ? highlight(r.category) : '<span style="color:var(--text-faint)">—</span>'}</td>
+				<td class="cat${r.category ? '' : ' cat-empty'}">${r.category ? highlight(r.category) : '<span style="color:var(--text-faint)">—</span>'}</td>
 				<td class="msg"><div>${highlight(r.message)}</div></td>
 			</tr>${open ? detailRow(r) : ''}`;
 		}).join('');
@@ -638,6 +643,10 @@
 	}
 
 	function setSortIndicators(tableId, key, asc) {
+		if (tableId === 'logTable' && $('mobileSort')) {
+			const v = key + ':' + (asc ? 'asc' : 'desc');
+			$('mobileSort').value = [...$('mobileSort').options].some((o) => o.value === v) ? v : 'timestamp:desc';
+		}
 		document.querySelectorAll(`#${tableId} th[data-sort]`).forEach((th) => {
 			const on = th.dataset.sort === key;
 			th.classList.toggle('sorted', on);
@@ -807,6 +816,12 @@
 
 		$('serviceFilter').addEventListener('change', (ev) => { state.explorer.service = ev.target.value; state.explorer.page = 0; refreshLogs(); });
 		$('categoryFilter').addEventListener('change', (ev) => { state.explorer.category = ev.target.value; state.explorer.page = 0; refreshLogs(); });
+		$('mobileSort').addEventListener('change', (ev) => {
+			const [sort, dir] = ev.target.value.split(':');
+			Object.assign(state.explorer, { sort, dir, page: 0 });
+			setSortIndicators('logTable', sort, dir === 'asc');
+			refreshLogs();
+		});
 		$('pageSize').addEventListener('change', (ev) => { state.explorer.size = Number(ev.target.value); state.explorer.page = 0; refreshLogs(); });
 		$('prevPage').addEventListener('click', () => { if (state.explorer.page > 0) { state.explorer.page--; refreshLogs(); } });
 		$('nextPage').addEventListener('click', () => { state.explorer.page++; refreshLogs(); });

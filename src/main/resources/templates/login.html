@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sign in · Log Analyzer</title>
+	<link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}" href="/favicon.svg">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+	<link rel="stylesheet" th:href="@{/css/dashboard.css}" href="/css/dashboard.css">
+	<style>
+		.login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; position: relative; z-index: 1; }
+		.login-card { width: 100%; max-width: 380px; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 28px 26px 24px; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 18px 40px -22px rgba(15,23,42,.3); }
+		.login-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; }
+		.login-card h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+		.login-card .sub { font-size: 13px; color: var(--text-dim); margin: 4px 0 20px; }
+		.field { display: block; margin-bottom: 14px; }
+		.field span { display: block; font-size: 12.5px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+		.field input { width: 100%; font: inherit; font-size: 14px; padding: 10px 12px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; color: var(--text); }
+		.field input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.15); }
+		.login-card .btn.dark { width: 100%; justify-content: center; padding: 10px 14px; font-size: 14px; margin-top: 4px; }
+		.msg { font-size: 13px; padding: 9px 11px; border-radius: 8px; margin-bottom: 16px; }
+		.msg.err { color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; }
+		.msg.ok { color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; }
+		.foot { text-align: center; font-size: 12px; color: var(--text-faint); margin-top: 16px; }
+	</style>
+</head>
+
+<body>
+	<main class="login-wrap">
+		<div class="login-card">
+			<div class="login-brand">
+				<svg class="brand-mark" width="26" height="26" viewBox="0 0 22 22" aria-hidden="true"><rect width="22" height="22" rx="5" fill="#1e293b"/><path d="M5 12.5h2.6l2-5 2.8 8 2-4.5H17" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				<span class="brand-title">Log Analyzer</span>
+				<span class="crumb-sep" aria-hidden="true">/</span>
+				<span class="workspace" th:text="${brandName}">NovaBank</span>
+			</div>
+			<h1>Sign in</h1>
+			<p class="sub">Access to the observability dashboard is restricted to support and engineering staff.</p>
+
+			<div class="msg err" th:if="${param.error}">Incorrect username or password.</div>
+			<div class="msg ok" th:if="${param.logout}">You have been signed out.</div>
+			<div class="msg err" th:if="${param.expired}">Your session expired. Please sign in again.</div>
+
+			<form th:action="@{/login}" method="post" action="/login">
+				<label class="field"><span>Username</span>
+					<input type="text" name="username" autocomplete="username" required autofocus>
+				</label>
+				<label class="field"><span>Password</span>
+					<input type="password" name="password" autocomplete="current-password" required>
+				</label>
+				<button class="btn dark" type="submit">Sign in</button>
+			</form>
+		</div>
+	</main>
+</body>
+
+</html>

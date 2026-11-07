@@ -8,7 +8,9 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+	<link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}" href="/favicon.svg">
 	<link rel="stylesheet" th:href="@{/css/dashboard.css}" href="/css/dashboard.css">
+	<script th:src="@{/js/http.js}" src="/js/http.js"></script>
 	<style>
 		textarea.logs {
 			width: 100%; min-height: 260px; resize: vertical; padding: 14px; border-radius: 12px; border: 1px solid var(--border-strong);
@@ -21,6 +23,21 @@
 		.fmt { font-size: 11px; font-weight: 600; color: #4338ca; background: rgba(99, 102, 241, .08); border: 1px solid rgba(99, 102, 241, .2); padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
 		code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: #eef2f7; padding: 2px 6px; border-radius: 6px; }
 		td.msg div { white-space: normal; }
+		@media (max-width: 640px) {
+			.row .btn, .row input.input { flex: 1 1 140px; }
+			#summary { white-space: normal; line-height: 1.5; }
+			#parsedTable thead { display: none; }
+			#parsedTable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; padding: 12px 2px; border-bottom: 1px solid var(--border); }
+			#parsedTable tbody td { display: block; padding: 0; border: 0; }
+			#parsedTable td:nth-child(1) { grid-column: 1; }
+			#parsedTable td:nth-child(3) { grid-column: 2; grid-row: 1; justify-self: end; }
+			#parsedTable td:nth-child(2) { grid-column: 1 / -1; }
+			#parsedTable td:nth-child(4), #parsedTable td:nth-child(5) { grid-column: 1; }
+			#parsedTable td:nth-child(6) { grid-column: 2; grid-row: 3; justify-self: end; text-align: right; }
+			#parsedTable td.msg { grid-column: 1 / -1; width: auto !important; max-width: none; }
+			#parsedTable td.empty { grid-column: 1 / -1; }
+			.table-wrap.explorer { max-height: none; }
+		}
 	</style>
 </head>
 
@@ -41,7 +58,8 @@
 				<a href="/parser" class="active">Parser</a>
 			</nav>
 			<div class="topbar-actions">
-				<a class="btn ghost" href="/h2-console" target="_blank" rel="noopener">H2 console</a>
+				<a class="btn ghost hide-sm" th:if="${h2Console}" href="/h2-console" target="_blank" rel="noopener">H2 console</a>
+				<form th:if="${username}" th:action="@{/logout}" method="post" action="/logout" style="margin:0"><button class="btn ghost" type="submit">Sign out</button></form>
 			</div>
 		</div>
 	</header>
@@ -74,7 +92,7 @@
 				<div class="card-head"><div><div class="card-title">Parsed events</div><div class="card-sub">How each event is normalised before it is written to the database</div></div></div>
 				<div class="card-body">
 					<div class="table-wrap explorer">
-						<table>
+						<table id="parsedTable">
 							<thead><tr><th>Format</th><th>Timestamp</th><th>Level</th><th>Service</th><th>Trace / IP</th><th>Category</th><th>Message</th></tr></thead>
 							<tbody id="out"><tr><td colspan="7" class="empty">Click “Parse” to see results.</td></tr></tbody>
 						</table>

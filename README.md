@@ -4,20 +4,77 @@ A Spring Boot + H2 log analytics dashboard for a fictional bank (**NovaBank**).
 Logs are written to a persistent H2 database, parsed from many real-world formats,
 classified into BFSI incident categories, and shown on a live dashboard.
 
-## Run
+## Run locally
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-Open http://localhost:8080. On first start, 7 days of history (~100k events) are generated in about 10 s.
-After that, new logs stream in every 2 seconds.
+Open http://localhost:8080 and sign in. With no `APP_PASSWORD` set, a random password is generated and printed in the
+console at startup (look for "Generated login for this run"). To choose your own:
+
+```bash
+APP_PASSWORD=your-password ./mvnw spring-boot:run
+```
+
+On first start, 7 days of demo history (about 100k events) are generated in the background; after that new logs
+stream in every 2 seconds.
 
 | URL | What |
 |---|---|
-| `/` | Live dashboard: KPIs, health score, error trend, categories, incidents, service health, log explorer |
-| `/parser` | Parser playground: paste any logs and see how they are detected and classified |
-| `/h2-console` | H2 console (JDBC URL `jdbc:h2:file:./data/bfsi-logs`, user `sa`, empty password) |
+| `/` | Live dashboard |
+| `/parser` | Parser playground |
+| `/h2-console` | H2 console (local only, turned off in production). JDBC URL `jdbc:h2:file:./data/bfsi-logs`, user `sa`, empty password |
+| `/actuator/health` | Health check for hosting platforms (public) |
+
+## Deploy
+
+The app ships as a Docker image that runs with the `prod` profile: the H2 console is off, cookies are HTTPS-only, it
+runs as a non-root user, and the database lives in `/app/data` (mount a volume there or data is lost on redeploy).
+
+### Docker / any VPS
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set at least `APP_PASSWORD`. Then:
+
+```bash
+docker compose up -d --build
+```
+
+The app is now on port 8080. Put it behind HTTPS (e.g. Caddy or Nginx with Let's Encrypt) and set
+`SECURE_COOKIES=true` once it is served over HTTPS.
+
+### Render
+
+New, then Blueprint, then pick this repository. `render.yaml` defines the service, the health check and a 1 GB disk
+for the database. Enter `APP_PASSWORD` (and optionally `GEMINI_API_KEY`) when asked. A persistent disk needs a paid
+plan; on the free plan the demo data is regenerated after each restart.
+
+### Railway, Fly.io and others
+
+Deploy from the `Dockerfile`, attach a volume at `/app/data`, set `APP_PASSWORD`, and use `/actuator/health` as the
+health check. The port is taken from `PORT`, which these platforms set automatically.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `APP_USERNAME` / `APP_PASSWORD` | `admin` / generated | Dashboard login |
+| `GEMINI_API_KEY` | empty | Enables Gemini AI analysis (offline NLP without it) |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model |
+| `AI_MAX_CALLS_PER_HOUR` | `60` | Cap on paid Gemini calls; beyond it the offline analysis is used |
+| `PORT` | `8080` | HTTP port |
+| `DATA_DIR` | `./data` (`/app/data` in Docker) | Where the H2 database file is stored |
+| `BRAND_NAME` / `BRAND_TAGLINE` | `NovaBank` / `BFSI Observability` | Branding |
+| `SIMULATOR_ENABLED` | `true` | Generate demo logs |
+| `SEED_DAYS` / `SIMULATOR_RATE` | `7` / `12` | Demo history length and events per minute |
+| `RETENTION_DAYS` | `7` | Older logs are purged hourly |
+| `SECURE_COOKIES` | `true` in prod | HTTPS-only session cookies |
+| `H2_CONSOLE_ENABLED` | `true` locally, `false` in prod | H2 web console |
+| `APP_SECURITY_ENABLED` | `true` | Set to `false` only on a private network |
 
 ## Features
 
@@ -40,6 +97,10 @@ After that, new logs stream in every 2 seconds.
 - **PDF export:** a professional multi-page A4 report with a cover page, executive summary, auto-generated key findings,
   a contents list with page numbers, high-resolution charts, colour-coded tables, and branded headers/footers with
   "Page X of Y". It follows the widgets you have visible.
+- **Responsive:** phones get two-per-row KPIs, card-style log lists, a sort dropdown and full-screen panels;
+  tablets pair cards two per row.
+- **Login & production hardening:** session login with CSRF protection, a 401 for expired API sessions, a public
+  health check, the H2 console off in production, a capped Gemini budget, and gzip with long-cached static files.
 - **Demo controls:** pause or resume the live stream, and "Simulate incident".
 
 ## AI error analysis (Google Gemini + NLP)
