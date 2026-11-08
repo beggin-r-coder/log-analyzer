@@ -52,6 +52,8 @@ class SecurityConfigTest {
 				.andExpect(redirectedUrl("/"));
 		mvc.perform(formLogin("/login").user("admin").password("wrong")).andExpect(unauthenticated())
 				.andExpect(redirectedUrl("/login?error"));
+		// the guest account only exists in demo mode
+		mvc.perform(formLogin("/login").user("guest").password("demo")).andExpect(unauthenticated());
 	}
 
 	@Test

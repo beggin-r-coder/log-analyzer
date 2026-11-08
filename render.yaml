@@ -1,21 +1,22 @@
-# Render Blueprint: New > Blueprint, pick this repository.
-# You will be asked for the values marked sync: false.
+# Free demo on Render: New > Blueprint, pick this repository.
+# Free instances sleep after ~15 idle minutes (first visit then takes ~1 minute) and
+# have no persistent disk, so demo data is regenerated after each restart. That is fine for a demo.
 services:
   - type: web
-    name: log-analyzer
+    name: log-analyzer-demo
     runtime: docker
-    plan: starter            # a persistent disk needs a paid plan
+    plan: free
     healthCheckPath: /actuator/health
     envVars:
-      - key: APP_USERNAME
-        value: admin
-      - key: APP_PASSWORD
+      - key: DEMO_MODE
+        value: "true"
+      - key: APP_PASSWORD        # your admin password; visitors use "Explore as guest"
         sync: false
-      - key: GEMINI_API_KEY
+      - key: GEMINI_API_KEY      # optional; leave empty for the offline NLP analysis
         sync: false
-      - key: BRAND_NAME
-        value: NovaBank
-    disk:
-      name: log-data
-      mountPath: /app/data
-      sizeGB: 1
+      - key: AI_MAX_CALLS_PER_HOUR
+        value: "20"
+      - key: SEED_DAYS
+        value: "2"
+      - key: JAVA_OPTS           # fits the free plan's 512 MB
+        value: "-Xmx256m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"

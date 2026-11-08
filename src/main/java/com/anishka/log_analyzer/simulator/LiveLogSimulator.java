@@ -203,8 +203,9 @@ public class LiveLogSimulator {
 
 	/** Starts an incident on demand (used by the dashboard demo control). */
 	public Incident triggerIncident(String service, int minutes) {
+		List<String> busy = generator.busyServiceNames();
 		String svc = service != null && generator.serviceNames().contains(service) ? service
-				: generator.serviceNames().get(rnd.nextInt(generator.serviceNames().size()));
+				: busy.get(rnd.nextInt(busy.size()));
 		LocalDateTime now = LocalDateTime.now();
 		currentIncident = new Incident(svc, now, now.plusMinutes(Math.max(1, Math.min(minutes, 30))));
 		log.info("Incident manually triggered on {}", svc);

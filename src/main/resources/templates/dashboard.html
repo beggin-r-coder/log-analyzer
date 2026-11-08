@@ -24,7 +24,7 @@
 			</a>
 			<span class="crumb-sep" aria-hidden="true">/</span>
 			<span class="workspace" th:text="${brandName}">NovaBank</span>
-			<span class="env-tag">prod</span>
+			<span class="env-tag" th:text="${demoMode} ? 'demo' : 'prod'">prod</span>
 
 			<nav class="nav-tabs" aria-label="Primary">
 				<a href="#" class="active" data-nav="top">Overview</a>
@@ -78,7 +78,7 @@
 						<th:block th:if="${username}">
 							<div class="menu-sep"></div>
 							<form th:action="@{/logout}" method="post" action="/logout">
-								<button role="menuitem" type="submit">Sign out<small th:text="'Signed in as ' + ${username}">Signed in as admin</small></button>
+								<button role="menuitem" type="submit">Sign out<small th:text="'Signed in as ' + ${username} + (${isAdmin} ? '' : ' · read-only')">Signed in as admin</small></button>
 							</form>
 						</th:block>
 					</div>
@@ -96,6 +96,23 @@
 			</div>
 			<span class="chip" id="rangeChip">Last 24 hours</span>
 		</div>
+
+		<section class="tour" id="demoTour" th:if="${demoMode}" hidden>
+			<div class="tour-head">
+				<div>
+					<div class="card-title">Take the 2-minute tour</div>
+					<div class="card-sub">Everything here is live: logs stream from H2 every 2 seconds.</div>
+				</div>
+				<button class="btn ghost small icon" id="tourClose" aria-label="Hide the tour">✕</button>
+			</div>
+			<ol class="tour-steps">
+				<li><button class="link" data-tour="incident">Simulate an incident</button><span>Breaks the UPI switch for 5 minutes</span></li>
+				<li><button class="link" data-tour="range">Switch to the last 15 minutes</button><span>Watch errors spike and health drop</span></li>
+				<li><button class="link" data-tour="ai">Analyze errors with AI</button><span>Root cause and recovery steps</span></li>
+				<li><button class="link" data-tour="log">Open one error</button><span>Similar errors, trace and AI analysis</span></li>
+				<li><button class="link" data-tour="pdf">Export the PDF report</button><span>A multi-page summary</span></li>
+			</ol>
+		</section>
 
 		<div class="banner" id="incidentBanner"><span class="live-dot"></span><span id="incidentText">Active incident</span></div>
 
@@ -518,6 +535,7 @@
 	<div class="toast" id="toast"></div>
 
 	<script th:src="@{/js/http.js}" src="/js/http.js"></script>
+	<script th:inline="javascript">window.APP_USER = { admin: /*[[${isAdmin}]]*/ true, demo: /*[[${demoMode}]]*/ false };</script>
 	<script th:inline="javascript">window.APP_BRAND = { name: /*[[${brandName}]]*/ "NovaBank", tagline: /*[[${brandTagline}]]*/ "BFSI Observability" };</script>
 	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
 	<script th:src="@{/js/ai.js}" src="/js/ai.js"></script>

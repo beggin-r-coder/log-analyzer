@@ -78,7 +78,7 @@
 					<textarea class="logs" id="input" spellcheck="false"></textarea>
 					<div class="row">
 						<button class="btn primary" id="parseBtn">Parse (preview)</button>
-						<button class="btn" id="ingestBtn" title="Parse and store in the H2 database">Parse &amp; store in H2</button>
+						<button class="btn" id="ingestBtn" title="Parse and store in the H2 database" th:disabled="${!isAdmin}" th:title="${isAdmin} ? 'Parse and store in the H2 database' : 'Read-only demo account: storing logs is disabled'">Parse &amp; store in H2</button>
 						<input class="input" id="service" placeholder="Default service (optional)" style="width:220px">
 						<button class="btn small" id="sampleBtn">Load samples</button>
 						<button class="btn small" id="clearBtn">Clear</button>

@@ -73,6 +73,11 @@ public class BfsiLogGenerator {
 		return profiles.stream().map(Profile::name).toList();
 	}
 
+	/** High-traffic services: an incident on one of these is clearly visible on the dashboard. */
+	public List<String> busyServiceNames() {
+		return profiles.stream().filter(p -> p.weight() >= 10).map(Profile::name).toList();
+	}
+
 	/**
 	 * Generates one event.
 	 *

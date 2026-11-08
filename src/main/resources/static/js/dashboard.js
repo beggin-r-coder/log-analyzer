@@ -882,6 +882,10 @@
 
 		// simulator controls
 		$('livePill').addEventListener('click', async () => {
+			if (window.APP_USER && !window.APP_USER.admin) {
+				toast('Read-only demo account: only the admin can pause the live stream');
+				return;
+			}
 			try {
 				renderSimulator(await api('/api/simulator/' + (state.simulatorRunning ? 'pause' : 'resume'), { method: 'POST' }));
 				toast(state.simulatorRunning ? 'Live log stream resumed' : 'Live log stream paused');
@@ -1206,6 +1210,58 @@
 		backfillFeed().then(connectFeed);
 	}
 
+	// ==========================================================
+	// DEMO TOUR (demo mode only)
+	// ==========================================================
+	function initTour() {
+		const box = $('demoTour');
+		if (!box) return;
+		let st = { dismissed: false, done: [] };
+		try { st = Object.assign(st, JSON.parse(load('tour', '{}'))); } catch (e) { /* defaults */ }
+		const persist = () => save('tour', JSON.stringify(st));
+		const mark = (step) => {
+			if (!st.done.includes(step)) st.done.push(step);
+			persist();
+			box.querySelectorAll('[data-tour]').forEach((b) => b.closest('li').classList.toggle('done', st.done.includes(b.dataset.tour)));
+		};
+		box.hidden = st.dismissed;
+		mark('__init');
+		$('tourClose').addEventListener('click', () => { st.dismissed = true; persist(); box.hidden = true; });
+		box.addEventListener('click', async (ev) => {
+			const b = ev.target.closest('[data-tour]');
+			if (!b) return;
+			const step = b.dataset.tour;
+			const show = (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); widgetEl(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+			if (step === 'incident') {
+				try {
+					renderSimulator(await api('/api/simulator/incident?service=upi-switch&minutes=5', { method: 'POST' }));
+					toast('UPI switch incident started for 5 minutes. Give it about a minute, then do step 2.');
+				} catch (e) { toast('Failed: ' + e.message); }
+			}
+			if (step === 'range') document.querySelector('#rangeMenu [data-range="15m"]').click();
+			if (step === 'ai') { show('aianalysis'); setTimeout(() => $('aiRun').click(), 400); }
+			if (step === 'pdf') $('pdfBtn').click();
+			if (step === 'log') {
+				show('explorer');
+				filterExplorer({ levels: ['ERROR', 'FATAL'] });
+				try {
+					const page = await api('/api/logs?' + explorerParams({ page: 0, size: 1 }));
+					if (page.content.length) {
+						const t = document.createElement('button');
+						t.hidden = true;
+						t.dataset.analyze = page.content[0].id;
+						document.body.appendChild(t);
+						t.click(); // opens the single-error panel (ai.js)
+						t.remove();
+					} else {
+						toast('No errors yet: simulate an incident first');
+					}
+				} catch (e) { /* ignore */ }
+			}
+			mark(step);
+		});
+	}
+
 	// shared with report.js (PDF export)
 	window.LA = {
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
@@ -1219,6 +1275,7 @@
 	initEvents();
 	initLayout();
 	initFeed();
+	initTour();
 	syncExplorerControls();
 	refreshFacets();
 	refreshDashboard();

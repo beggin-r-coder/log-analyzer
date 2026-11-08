@@ -4,6 +4,39 @@ A Spring Boot + H2 log analytics dashboard for a fictional bank (**NovaBank**).
 Logs are written to a persistent H2 database, parsed from many real-world formats,
 classified into BFSI incident categories, and shown on a live dashboard.
 
+## Quick demo
+
+**On your laptop** (needs Java 17+):
+
+```bash
+sh demo.sh
+```
+
+On Windows run `demo.cmd`. Then open http://localhost:8080.
+
+- **Visitors:** click **Explore as guest** (read-only) and follow the 2-minute tour card on the dashboard.
+- **You:** sign in as `admin` / `admin123` (change it with `APP_PASSWORD=... sh demo.sh`).
+- **Gemini:** `GEMINI_API_KEY=your-key sh demo.sh`. Without a key, the offline NLP analysis is used.
+
+**Free online demo on Render:** New, then Blueprint, then pick this repository. `render.yaml` sets up a free
+instance in demo mode. Enter an `APP_PASSWORD` for yourself and optionally a `GEMINI_API_KEY`. Free instances sleep
+after about 15 idle minutes (the first visit then takes about a minute) and regenerate demo data after restarts. The
+settings were tested in a container limited to 512 MB, the free plan's memory.
+
+**What the guest can and cannot do:** browse everything, simulate incidents, run AI analysis (capped at
+`AI_MAX_CALLS_PER_HOUR`, 20 on Render) and export PDFs. Only the admin can pause the live stream for everyone,
+store logs from the parser, and open the H2 console.
+
+**5-minute demo script**
+
+1. Log in as guest; point out the KPIs with change vs the previous period and the live stream.
+2. Tour step 1, **Simulate an incident**: the UPI switch starts failing.
+3. Wait about a minute, then step 2, **Last 15 minutes**: errors spike, the banner appears and health drops.
+4. Step 3, **Analyze errors with AI**: root cause, a recovery checklist and incident cards.
+5. Step 4, **Open one error**: similar errors, the trace, AI analysis and **Copy as ticket**.
+6. The **Parser** tab: **Load samples**, then **Parse** to show 12 log formats detected automatically.
+7. Step 5, **Export the PDF report**; then open the site on your phone.
+
 ## Run locally
 
 ```bash
