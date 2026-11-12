@@ -124,12 +124,12 @@
 	Chart.defaults.plugins.tooltip.titleFont = { weight: '600' };
 
 	/** Recolours axes, grids and donut borders for the light or dark theme. */
-	const STRONG_TICKS = new Set(['#334155', '#c8d3e6']);
+	const STRONG_TICKS = new Set(['#334155', '#c8d3e6', '#c9ccd1']);
 	function applyChartTheme() {
 		const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-		const tick = dark ? '#7f8ea8' : C.faint, strong = dark ? '#c8d3e6' : '#334155';
-		const grid = dark ? 'rgba(148,163,184,0.10)' : C.grid, surface = dark ? '#0d1322' : '#ffffff';
-		Chart.defaults.color = dark ? '#9aa8bf' : C.text;
+		const tick = dark ? '#7c818b' : C.faint, strong = dark ? '#c9ccd1' : '#334155';
+		const grid = dark ? 'rgba(255,255,255,0.06)' : C.grid, surface = dark ? '#16181c' : '#ffffff';
+		Chart.defaults.color = dark ? '#9a9fa8' : C.text;
 		Chart.defaults.borderColor = grid;
 		Object.values(Chart.instances).forEach((ch) => {
 			Object.values(ch.options.scales || {}).forEach((sc) => {
@@ -209,11 +209,7 @@
 					if (!chartArea) return '#818cf8';
 					const g = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
 					const hot = c.dataIndex === 0, dark = document.documentElement.getAttribute('data-theme') === 'dark';
-					if (dark) { // neon
-						g.addColorStop(0, hot ? 'rgba(255,77,141,0.45)' : 'rgba(34,211,238,0.35)');
-						g.addColorStop(1, hot ? 'rgba(255,46,99,1)' : 'rgba(167,139,250,0.95)');
-						return g;
-					}
+					if (dark) return hot ? '#e5484d' : '#5b6170'; // flat, muted
 					g.addColorStop(0, hot ? 'rgba(244,63,94,0.45)' : 'rgba(99,102,241,0.45)');
 					g.addColorStop(1, hot ? 'rgba(225,29,72,0.95)' : 'rgba(99,102,241,0.95)');
 					return g;
