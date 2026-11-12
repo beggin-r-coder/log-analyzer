@@ -160,6 +160,39 @@
 			</details>`;
 	}
 
+	// ---------- staged progress, so the analysis reads as the multi-step job it is ----------
+	const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+	const OVERVIEW_STAGES = ['Collecting errors in the selected window', 'Grouping errors into patterns (template mining)',
+		'Extracting entities and keywords', 'Matching patterns to the BFSI failure playbook', 'Writing the recovery plan'];
+	const LOG_STAGES = ['Loading the event, its trace and nearby errors', 'Finding similar errors (TF-IDF similarity)',
+		'Matching the BFSI failure playbook', 'Writing recovery steps'];
+
+	function progressHtml(title, sub, stages) {
+		return `<div class="ai-progress"><div class="card-title">${esc(title)}</div>${sub ? `<div class="ai-muted" style="margin:3px 0 12px">${esc(sub)}</div>` : '<div style="height:10px"></div>'}
+			<ol class="ai-stages">${stages.map((t) => `<li><i></i><span>${esc(t)}</span></li>`).join('')}</ol>
+			<div class="bar"><i></i></div></div>`;
+	}
+
+	/** Animates the stages while the request runs; never finishes before the request does. */
+	async function staged(box, request, minMs) {
+		const items = [...box.querySelectorAll('.ai-stages li')], bar = box.querySelector('.bar i');
+		const per = minMs / items.length;
+		let i = 0, settled = false;
+		const show = () => {
+			items.forEach((li, n) => { li.classList.toggle('done', n < i); li.classList.toggle('active', n === i); });
+			if (bar) bar.style.width = Math.round(i / items.length * 100) + '%';
+		};
+		show();
+		const timer = setInterval(() => { if (i < items.length - 1) { i++; show(); } }, per);
+		try {
+			const [res] = await Promise.all([request.finally(() => { settled = true; }), sleep(minMs)]);
+			return res;
+		} finally {
+			clearInterval(timer);
+			if (settled) { i = items.length; show(); await sleep(280); }
+		}
+	}
+
 	async function runOverview(force) {
 		if (ai.running) return;
 		ai.running = true;
@@ -167,13 +200,11 @@
 		const label = $('aiRunText').textContent;
 		$('aiRunText').textContent = 'Analyzing…';
 		const errors = LA.summary ? LA.summary.totals.error + LA.summary.totals.fatal : null;
-		$('aiBody').innerHTML = `<div class="ai-loading"><div class="spinner"></div>
-			<div><b>${ai.status && ai.status.configured ? 'Asking Gemini' : 'Running NLP analysis'}</b>
-			<div class="ai-muted">${ai.status && ai.status.configured
-				? `Grouping ${errors != null ? nf.format(errors) + ' ' : ''}errors into patterns, redacting personal data, then analyzing. This usually takes 5–20 seconds.`
-				: `Grouping ${errors != null ? nf.format(errors) + ' ' : ''}errors into patterns and matching them against the BFSI failure playbook.`}</div></div></div>`;
+		const gemini = ai.status && ai.status.configured;
+		$('aiBody').innerHTML = progressHtml(gemini ? 'Asking Gemini' : 'Running NLP analysis',
+			`${errors != null ? nf.format(errors) + ' errors in ' : 'Errors in '}${(LA.RANGE_LABEL[LA.range] || LA.range).toLowerCase()}`, OVERVIEW_STAGES);
 		try {
-			ai.overview = await post(`/api/ai/overview?range=${encodeURIComponent(LA.range)}&force=${force ? 'true' : 'false'}`);
+			ai.overview = await staged($('aiBody'), post(`/api/ai/overview?range=${encodeURIComponent(LA.range)}&force=${force ? 'true' : 'false'}`), 2400);
 		} catch (e) {
 			LA.toast('Analysis failed: ' + e.message);
 			$('aiRunText').textContent = label;
@@ -244,7 +275,7 @@
 		html += `<section class="panel-sec ai-block"><div class="sec-title"><span>${nlpOnly ? 'Root cause & recovery' : 'AI analysis'}</span>
 			<button class="btn small ${a ? 'ghost' : 'dark'}" id="aiPanelRun">${a ? 'Re-run' : configured ? '✦ Analyze with Gemini' : nlpOnly ? 'Analyze' : '✦ Run offline analysis'}</button></div>`;
 		if (ai.panelLoading) {
-			html += `<div class="ai-loading"><div class="spinner"></div><div><b>${configured ? 'Asking Gemini' : 'Running NLP analysis'}</b><div class="ai-muted">${configured ? 'Sending this event with its trace, nearby errors and similar errors (personal data redacted).' : 'Matching this event and its pattern against the BFSI failure playbook.'}</div></div></div>`;
+			html += `<div id="aiPanelProgress">${progressHtml(configured ? 'Asking Gemini' : 'Running NLP analysis', '', LOG_STAGES)}</div>`;
 		} else if (a) {
 			html += header(a) + body(a, true);
 		} else {
@@ -310,7 +341,9 @@
 		ai.panelLoading = true;
 		renderPanel();
 		try {
-			const res = await post(`/api/ai/logs/${id}?force=${ai.panelInsight ? 'true' : 'false'}`);
+			const box = $('aiPanelProgress');
+			const req = post(`/api/ai/logs/${id}?force=${ai.panelInsight ? 'true' : 'false'}`);
+			const res = box ? await staged(box, req, 1600) : await req;
 			if (ai.panelId === id) ai.panelInsight = res;
 		} catch (e) {
 			LA.toast('Analysis failed: ' + e.message);

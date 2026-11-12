@@ -123,6 +123,27 @@
 	});
 	Chart.defaults.plugins.tooltip.titleFont = { weight: '600' };
 
+	/** Recolours axes, grids and donut borders for the light or dark theme. */
+	const STRONG_TICKS = new Set(['#334155', '#c8d3e6']);
+	function applyChartTheme() {
+		const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+		const tick = dark ? '#7f8ea8' : C.faint, strong = dark ? '#c8d3e6' : '#334155';
+		const grid = dark ? 'rgba(148,163,184,0.10)' : C.grid, surface = dark ? '#0d1322' : '#ffffff';
+		Chart.defaults.color = dark ? '#9aa8bf' : C.text;
+		Chart.defaults.borderColor = grid;
+		Object.values(Chart.instances).forEach((ch) => {
+			Object.values(ch.options.scales || {}).forEach((sc) => {
+				if (sc.ticks) sc.ticks.color = STRONG_TICKS.has(sc.ticks.color) ? strong : tick;
+				if (sc.grid && sc.grid.display !== false) sc.grid.color = grid;
+			});
+			if (ch.config.type === 'doughnut') ch.data.datasets.forEach((d) => { d.borderColor = surface; });
+			const legend = ch.options.plugins && ch.options.plugins.legend;
+			if (legend && legend.labels) legend.labels.color = Chart.defaults.color;
+			ch.update('none');
+		});
+	}
+	document.addEventListener('la:theme', applyChartTheme);
+
 	const gradient = (c, stops) => {
 		const { chartArea, ctx } = c.chart;
 		if (!chartArea) return stops[0][1];
@@ -187,7 +208,12 @@
 					const { chartArea, ctx } = c.chart;
 					if (!chartArea) return '#818cf8';
 					const g = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-					const hot = c.dataIndex === 0;
+					const hot = c.dataIndex === 0, dark = document.documentElement.getAttribute('data-theme') === 'dark';
+					if (dark) { // neon
+						g.addColorStop(0, hot ? 'rgba(255,77,141,0.45)' : 'rgba(34,211,238,0.35)');
+						g.addColorStop(1, hot ? 'rgba(255,46,99,1)' : 'rgba(167,139,250,0.95)');
+						return g;
+					}
 					g.addColorStop(0, hot ? 'rgba(244,63,94,0.45)' : 'rgba(99,102,241,0.45)');
 					g.addColorStop(1, hot ? 'rgba(225,29,72,0.95)' : 'rgba(99,102,241,0.95)');
 					return g;
@@ -431,7 +457,7 @@
 
 		$('serviceCount').textContent = s.services.length;
 		$('timestamp').textContent = s.lastEventAt ? 'Last event ' + ago(s.lastEventAt) : 'No events yet';
-		$('rangeChip').textContent = RANGE_LABEL[s.range] || s.range;
+		if ($('rangeChip')) $('rangeChip').textContent = RANGE_LABEL[s.range] || s.range;
 	}
 
 	function renderHealth(s) {
@@ -557,8 +583,10 @@
 	async function refreshDashboard() {
 		try {
 			renderSummary(await api(`/api/dashboard?range=${encodeURIComponent(state.range)}&tz=${TZ_OFFSET}`));
+			return true;
 		} catch (e) {
 			$('timestamp').textContent = 'Connection lost – retrying…';
+			return false;
 		}
 	}
 
@@ -1277,9 +1305,40 @@
 	initFeed();
 	initTour();
 	syncExplorerControls();
+	// ---------- loading screen ----------
+	const loader = (() => {
+		const started = performance.now();
+		const set = (pct, text) => {
+			if ($('loaderBar')) $('loaderBar').style.width = pct + '%';
+			if (text && $('loaderText')) $('loaderText').textContent = text;
+		};
+		const done = () => {
+			const el = $('appLoader');
+			if (!el || el.classList.contains('done')) return;
+			set(100, 'Ready');
+			// stay long enough to be seen, never long enough to annoy
+			setTimeout(() => { el.classList.add('done'); setTimeout(() => el.remove(), 600); }, Math.max(0, 900 - (performance.now() - started)));
+		};
+		return { set, done };
+	})();
+	window.LA_LOADER = loader;
+	setTimeout(loader.done, 12000); // safety net
+
+	applyChartTheme();
+	loader.set(15, 'Connecting to the log store…');
 	refreshFacets();
-	refreshDashboard();
-	refreshLogs();
+	(async () => {
+		let ok = await refreshDashboard();
+		while (!ok) {
+			loader.set(15, 'Cannot reach the server – retrying…');
+			await new Promise((r) => setTimeout(r, 3000));
+			ok = await refreshDashboard();
+		}
+		loader.set(65, 'Computing trends and health score…');
+		await refreshLogs();
+		loader.set(85, 'Opening the live log stream…');
+		setTimeout(loader.done, 250);
+	})();
 
 	setInterval(() => {
 		if (document.hidden) return;

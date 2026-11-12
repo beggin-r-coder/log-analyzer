@@ -876,7 +876,6 @@
 	// HTTP LAYER: fetch() and EventSource stand-ins
 	// =====================================================================
 	const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-	const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 	function checkBody(body) {
 		if (!body || !String(body).trim()) { const e = new Error('Request body is empty – send raw log text.'); e.status = 400; throw e; }
@@ -889,6 +888,7 @@
 	};
 
 	async function route(method, path, params, body) {
+		await ready; // data is generated once the loading screen is showing
 		let m;
 		if (method === 'GET' && path === '/api/dashboard') return json(summary(params.get('range')));
 		if (method === 'GET' && path === '/api/logs') return json(page(params));
@@ -924,7 +924,7 @@
 			return json(simStatus());
 		}
 		if (path === '/api/ai/status') return json({ provider: 'Google Gemini', enabled: false, configured: false, model: 'nlp-playbook', mode: 'NLP', redaction: true, maxCallsPerHour: 0 });
-		if (method === 'POST' && path === '/api/ai/overview') { await sleep(500); return json(analyzeOverview(params.get('range'), params.get('force') === 'true')); }
+		if (method === 'POST' && path === '/api/ai/overview') { return json(analyzeOverview(params.get('range'), params.get('force') === 'true')); }
 		if (method === 'GET' && path === '/api/ai/overview/latest') {
 			const a = analyses.overview.get(rangeOf(params.get('range')));
 			return a ? json(Object.assign({}, a, { cached: true })) : new Response(null, { status: 204 });
@@ -934,7 +934,7 @@
 			const a = analyses.logs.get(Number(m[1]));
 			return a ? json(Object.assign({}, a, { cached: true })) : new Response(null, { status: 204 });
 		}
-		if (method === 'POST' && (m = path.match(/^\/api\/ai\/logs\/(\d+)$/))) { await sleep(400); return json(analyzeLog(Number(m[1]), params.get('force') === 'true')); }
+		if (method === 'POST' && (m = path.match(/^\/api\/ai\/logs\/(\d+)$/))) { return json(analyzeLog(Number(m[1]), params.get('force') === 'true')); }
 		return json({ error: 'Not found: ' + method + ' ' + path }, 404);
 	}
 
@@ -996,8 +996,19 @@
 	// =====================================================================
 	// BOOT
 	// =====================================================================
-	const t0 = performance.now();
-	seed();
-	setInterval(tick, INTERVAL_MS);
-	window.LA_DEMO = { store, parseText, parseLine, template, summary, seededMs: Math.round(performance.now() - t0) };
+	let markReady;
+	const ready = new Promise((r) => { markReady = r; });
+	window.LA_DEMO = { store, parseText, parseLine, template, summary, seededMs: null };
+	document.addEventListener('DOMContentLoaded', () => {
+		const text = document.getElementById('loaderText'), bar = document.getElementById('loaderBar');
+		if (text) text.textContent = 'Generating 2 days of simulated bank logs…';
+		if (bar) bar.style.width = '35%';
+		setTimeout(() => { // let the loading screen paint first
+			const t0 = performance.now();
+			seed();
+			window.LA_DEMO.seededMs = Math.round(performance.now() - t0);
+			setInterval(tick, INTERVAL_MS);
+			markReady();
+		}, 80);
+	});
 })();

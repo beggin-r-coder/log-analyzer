@@ -133,7 +133,7 @@
 				maxBarThickness: ds.maxBarThickness ? ds.maxBarThickness * 1.2 : undefined
 			}))
 		};
-		if (live.config.type === 'doughnut') data.datasets.forEach((ds) => { ds.borderWidth = 3; ds.hoverOffset = 0; });
+		if (live.config.type === 'doughnut') data.datasets.forEach((ds) => { ds.borderWidth = 3; ds.hoverOffset = 0; ds.borderColor = '#ffffff'; }); // print is always light
 		const chart = new Chart(canvas.getContext('2d'), { type: live.config.type, data, options: printOptions(key) });
 		const url = chart.toBase64Image('image/png', 1);
 		chart.destroy();
