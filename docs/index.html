@@ -43,6 +43,7 @@
 			<nav class="nav-tabs" aria-label="Primary">
 				<a href="#" class="active" data-nav="top">Overview</a>
 				<a href="#explorer" data-nav="explorer">Logs</a>
+				<a href="#incidents" data-nav="incidentdesk">Incidents <span class="nav-badge" id="incNavBadge" hidden>0</span></a>
 				<a href="#live" data-nav="livefeed">Live stream</a>
 				<a href="parser.html">Parser</a>
 			</nav>
@@ -120,6 +121,8 @@
 			<ol class="tour-steps">
 				<li><button class="link" data-tour="incident">Simulate an incident</button><span>Breaks the UPI switch for 5 minutes</span></li>
 				<li><button class="link" data-tour="range">Switch to the last 15 minutes</button><span>Watch errors spike and health drop</span></li>
+				<li><button class="link" data-tour="incdesk">Handle the incident</button><span>Auto-opened by an alert rule: acknowledge and resolve it</span></li>
+				<li><button class="link" data-tour="impact">See the business impact</button><span>Money at risk, customers affected, SLA</span></li>
 				<li><button class="link" data-tour="ai">Analyze the errors</button><span>Root cause and recovery steps</span></li>
 				<li><button class="link" data-tour="log">Open one error</button><span>Pattern, similar errors and recovery steps</span></li>
 				<li><button class="link" data-tour="pdf">Export the PDF report</button><span>A multi-page summary</span></li>
@@ -215,7 +218,73 @@
 				</div>
 				<div class="kpi-value" id="kpiIncidents">—</div>
 				<div class="meter"><span id="incidentsMeter"></span></div>
-				<div class="kpi-foot"><span>critical + high categories</span><span class="kpi-share" id="incidentsTop">—</span></div>
+				<div class="kpi-foot"><span id="incidentsNote">from alert rules</span><span class="kpi-share" id="incidentsTop">—</span></div>
+			</section>
+
+			<!-- ============ BUSINESS IMPACT ============ -->
+			<section data-widget="impact" id="impact" class="card span-5">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Business Impact</div>
+						<div class="card-sub" id="impactSub">Estimated customer and money impact of failures</div>
+					</div>
+					<button class="chip info-chip" id="impactHow" type="button" title="">How it's estimated</button>
+				</div>
+				<div class="card-body">
+					<p class="impact-headline" id="impactHeadline">Loading…</p>
+					<div class="impact-stats">
+						<div class="impact-stat"><span>Value at risk</span><b id="impValue">—</b><small id="impValueNote">failed payments</small></div>
+						<div class="impact-stat"><span>Failed transactions</span><b id="impTxns">—</b><small>customer-facing</small></div>
+						<div class="impact-stat"><span>Customers affected</span><b id="impCustomers">—</b><small>estimated</small></div>
+						<div class="impact-stat"><span>MTTR</span><b id="impMttr">—</b><small id="impMtta">MTTA —</small></div>
+					</div>
+					<div class="impact-services" id="impactServices"></div>
+				</div>
+			</section>
+
+			<!-- ============ SLA & ERROR BUDGET ============ -->
+			<section data-widget="sla" id="sla" class="card span-7">
+				<div class="card-head">
+					<div>
+						<div class="card-title">SLA &amp; Error Budget</div>
+						<div class="card-sub">Availability per service against its target, in 5-minute slots</div>
+					</div>
+					<div class="sla-chips" id="slaChips"></div>
+				</div>
+				<div class="card-body" style="padding-top:12px">
+					<div class="table-wrap sla-wrap">
+						<table id="slaTable">
+							<thead><tr><th>Service</th><th class="hide-xs">Target</th><th>Availability</th><th>Budget used</th><th>Status</th></tr></thead>
+							<tbody><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+						</table>
+					</div>
+				</div>
+			</section>
+
+			<!-- ============ INCIDENT DESK ============ -->
+			<section data-widget="incidentdesk" id="incidents" class="card span-12">
+				<div class="card-head">
+					<div>
+						<div class="card-title">Incidents</div>
+						<div class="card-sub">Opened automatically by alert rules and routed to the owning on-call team · acknowledge, add notes, resolve</div>
+					</div>
+					<div class="inc-actions">
+						<div class="seg" id="incFilter" role="tablist" aria-label="Incident filter">
+							<button data-f="active" class="on">Active</button><button data-f="all">All</button><button data-f="resolved">Resolved</button>
+						</div>
+						<button class="btn ghost small" id="incRulesBtn">Alert rules</button>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="inc-stats">
+						<div><b id="incOpen">—</b><span>Open</span></div>
+						<div><b id="incAcked">—</b><span>Acknowledged</span></div>
+						<div><b id="incResolved">—</b><span>Resolved (range)</span></div>
+						<div><b id="incMtta">—</b><span>Mean time to acknowledge</span></div>
+						<div><b id="incMttr">—</b><span>Mean time to resolve</span></div>
+					</div>
+					<div class="inc-list" id="incList"><div class="empty">Loading…</div></div>
+				</div>
 			</section>
 
 			<!-- ============ HEALTH SCORE ============ -->
@@ -352,11 +421,11 @@
 				</div>
 			</section>
 
-			<!-- ============ CRITICAL INCIDENTS ============ -->
+			<!-- ============ CRITICAL ERROR PATTERNS ============ -->
 			<section data-widget="incidents" class="card span-5" style="animation-delay: .48s">
 				<div class="card-head">
 					<div>
-						<div class="card-title">Top Critical Incidents</div>
+						<div class="card-title">Critical Error Patterns</div>
 						<div class="card-sub">Severity from error rate per hour</div>
 					</div>
 					<span class="chip chip-alert" id="incidentChip">—</span>
@@ -544,6 +613,34 @@
 		<div class="panel-body" id="aiPanelBody"></div>
 	</aside>
 
+	<!-- ============ INCIDENT PANEL ============ -->
+	<div class="panel-backdrop" id="incPanelBackdrop"></div>
+	<aside class="side-panel" id="incPanel" aria-label="Incident" aria-hidden="true">
+		<div class="panel-head">
+			<div style="min-width:0">
+				<div class="card-sub" id="incPanelSub">—</div>
+				<div class="card-title" style="font-size:15px" id="incPanelTitle">Incident</div>
+			</div>
+			<div style="display:flex; gap:6px">
+				<button class="btn ghost small" id="incCopy" title="Copy a post-incident summary as Markdown">Copy summary</button>
+				<button class="btn ghost small icon" id="incPanelClose" aria-label="Close">✕</button>
+			</div>
+		</div>
+		<div class="panel-body" id="incPanelBody"></div>
+	</aside>
+
+	<!-- ============ ALERT RULES ============ -->
+	<aside class="side-panel" id="rulesPanel" aria-label="Alert rules" aria-hidden="true">
+		<div class="panel-head">
+			<div>
+				<div class="card-title" style="font-size:15px">Alert rules</div>
+				<div class="card-sub">Evaluated every 10 seconds against the logs in this browser. One active incident per service.</div>
+			</div>
+			<button class="btn ghost small icon" id="rulesClose" aria-label="Close">✕</button>
+		</div>
+		<div class="panel-body" id="rulesBody"></div>
+	</aside>
+
 	<div class="toast" id="toast"></div>
 
 	
@@ -551,6 +648,7 @@
 	<script>window.APP_BRAND = { name: "NovaBank", tagline: "BFSI Observability"};</script>
 	<script src="js/dashboard.js"></script>
 	<script src="js/ai.js"></script>
+	<script src="js/incidents.js"></script>
 	<script>window.APP_PDF_LIBS = ["vendor/jspdf.umd.min.js", "vendor/jspdf.plugin.autotable.min.js"];</script>
 	<script src="js/report.js"></script>
 </body>

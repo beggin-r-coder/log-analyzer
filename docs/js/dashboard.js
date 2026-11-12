@@ -369,10 +369,7 @@
 		const bad = s.services.filter((x) => x.status !== 'HEALTHY').map((x) => x.name);
 		$('servicesNote').textContent = bad.length ? 'issues: ' + bad.slice(0, 2).join(', ') + (bad.length > 2 ? '…' : '') : 'all services healthy';
 
-		const open = s.categories.filter((c) => c.severity === 'CRITICAL' || c.severity === 'HIGH');
-		countTo($('kpiIncidents'), open.length);
-		$('incidentsTop').textContent = open.length ? open[0].severity : 'none';
-		$('incidentsMeter').style.width = Math.min(100, open.length * 25) + '%';
+		// kpiIncidents is driven by incidents.js from the incident desk
 	}
 
 	// ==========================================================
@@ -763,7 +760,7 @@
 			// at the very bottom the last section may never reach the top, so count anything on screen
 			const atBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
 			const line = atBottom ? window.innerHeight : window.innerHeight * 0.4;
-			const reached = ['livefeed', 'explorer'].map(widgetEl)
+			const reached = ['incidentdesk', 'livefeed', 'explorer'].map(widgetEl)
 				.filter((el) => el && !el.classList.contains('w-hidden') && el.getBoundingClientRect().top < line)
 				.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
 			if (reached.length) current = reached[0].dataset.widget;
@@ -937,7 +934,10 @@
 		{ id: 'kpi-throughput', group: 'KPIs', name: 'Throughput', desc: 'Average vs. peak events per minute', icon: '↗' },
 		{ id: 'kpi-fatal', group: 'KPIs', name: 'Fatal events', desc: 'System-critical failures', icon: '★' },
 		{ id: 'kpi-services', group: 'KPIs', name: 'Healthy services', desc: 'Services under the error threshold', icon: '▤' },
-		{ id: 'kpi-incidents', group: 'KPIs', name: 'Open incidents', desc: 'Critical + high severity categories', icon: '⚠' },
+		{ id: 'kpi-incidents', group: 'KPIs', name: 'Open incidents', desc: 'Incidents opened by alert rules and not yet resolved', icon: '⚠' },
+		{ id: 'impact', group: 'Business', name: 'Business impact', desc: 'Money at risk, failed transactions, customers affected, MTTR', icon: '₹' },
+		{ id: 'sla', group: 'Business', name: 'SLA & error budget', desc: 'Availability per service against its SLA target', icon: '◷' },
+		{ id: 'incidentdesk', group: 'Business', name: 'Incidents', desc: 'Auto-opened incidents: acknowledge, add notes, resolve', icon: '⚑' },
 		{ id: 'health', group: 'Charts', name: 'System health score', desc: 'Gauge weighted by errors and warnings', icon: '◔' },
 		{ id: 'trend', group: 'Charts', name: 'Error trend timeline', desc: 'Errors and warnings over time', icon: '〜' },
 		{ id: 'donut', group: 'Charts', name: 'Log level distribution', desc: 'Share of events per level', icon: '◕' },
@@ -948,12 +948,12 @@
 		{ id: 'formats', group: 'Charts', name: 'Log format mix', desc: 'Formats detected by the universal parser', icon: '{}' },
 		{ id: 'livefeed', group: 'Live & tables', name: 'Live log stream', desc: 'Real-time feed pushed from the database', icon: '●' },
 		{ id: 'aianalysis', group: 'Live & tables', name: window.APP_USER && window.APP_USER.ai ? 'AI error analysis' : 'Error analysis', desc: window.APP_USER && window.APP_USER.ai ? 'Gemini root cause, impact and recovery steps' : 'NLP root cause, impact and recovery steps', icon: '✦' },
-		{ id: 'incidents', group: 'Live & tables', name: 'Top critical incidents', desc: 'Categories ranked by severity', icon: '▲' },
+		{ id: 'incidents', group: 'Live & tables', name: 'Critical error patterns', desc: 'Error categories ranked by severity', icon: '▲' },
 		{ id: 'services', group: 'Live & tables', name: 'Service health', desc: 'Per-service volume and error rate', icon: '☰' },
 		{ id: 'explorer', group: 'Live & tables', name: 'Log explorer', desc: 'Search, filter, sort and export logs', icon: '⌕' }
 	];
 	const DEFAULT_ORDER = ['kpi-total', 'kpi-info', 'kpi-warn', 'kpi-error', 'kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents',
-		'health', 'trend', 'livefeed', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'aianalysis', 'incidents', 'services', 'explorer'];
+		'impact', 'sla', 'incidentdesk', 'health', 'trend', 'livefeed', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'aianalysis', 'incidents', 'services', 'explorer'];
 	const DEFAULT_HIDDEN = ['kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'volume', 'formats', 'errorrate', 'svcerrors'];
 	const LAYOUT_KEY = 'layout.v1';
 
@@ -1015,7 +1015,7 @@
 	}
 
 	function renderWidgetList() {
-		const groups = ['KPIs', 'Charts', 'Live & tables'];
+		const groups = ['KPIs', 'Business', 'Charts', 'Live & tables'];
 		const count = visibleWidgets().length;
 		$('widgetList').innerHTML = `<div class="w-group" style="margin-top:12px">${count} of ${WIDGETS.length} widgets shown</div>` + groups.map((g) => {
 			const ids = layout.order.filter((id) => widgetMeta(id) && widgetMeta(id).group === g);
@@ -1202,6 +1202,9 @@
 			if (feed.everConnected) backfillFeed(); // fill any gap after a reconnect
 			feed.everConnected = true;
 		});
+		es.addEventListener('incident', (ev) => {
+			try { document.dispatchEvent(new CustomEvent('la:incident', { detail: JSON.parse(ev.data) })); } catch (e) { /* ignore */ }
+		});
 		es.addEventListener('logs', (ev) => {
 			try { addToFeed(JSON.parse(ev.data), true); } catch (e) { /* ignore malformed */ }
 		});
@@ -1263,6 +1266,8 @@
 				} catch (e) { toast('Failed: ' + e.message); }
 			}
 			if (step === 'range') document.querySelector('#rangeMenu [data-range="15m"]').click();
+			if (step === 'incdesk') { show('incidentdesk'); document.dispatchEvent(new CustomEvent('la:open-latest-incident')); }
+			if (step === 'impact') show('impact');
 			if (step === 'ai') { show('aianalysis'); setTimeout(() => $('aiRun').click(), 400); }
 			if (step === 'pdf') $('pdfBtn').click();
 			if (step === 'log') {
@@ -1290,7 +1295,8 @@
 	window.LA = {
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
 		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange, filterExplorer, esc, agoShort, ago,
-		RANGE_LABEL, delta, charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
+		RANGE_LABEL, delta, nf, showWidget: (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); widgetEl(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+		isVisible: (id) => !layout.hidden.has(id), charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
 	};
 
 	// ==========================================================

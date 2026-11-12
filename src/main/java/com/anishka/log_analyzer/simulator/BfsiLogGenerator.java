@@ -249,19 +249,20 @@ public class BfsiLogGenerator {
 
 	private String value(String key, Random r) {
 		return switch (key) {
-		case "acct" -> "XXXXXX" + digits(r, 4);
-		case "card" -> (r.nextBoolean() ? "4" : "5") + "XXXXXXXXXXX" + digits(r, 4);
+		// customers come from a finite book, so the same customer can fail more than once
+		case "acct" -> "XXXXXX" + (1000 + r.nextInt(1800));
+		case "card" -> (r.nextBoolean() ? "4" : "5") + "XXXXXXXXXXX" + (2000 + r.nextInt(1500));
 		case "amt" -> String.format("%,.2f", amount(r));
 		case "txn" -> "TXN" + digits(r, 12);
 		case "upitxn" -> "NOVA" + digits(r, 14);
 		case "rrn" -> digits(r, 12);
-		case "vpa" -> (char) ('a' + r.nextInt(26)) + "****" + digits(r, 2) + "@" + pickStr(PSP, r);
+		case "vpa" -> (char) ('a' + r.nextInt(14)) + "****" + digits(r, 2) + "@" + pickStr(PSP, r);
 		case "ms" -> String.valueOf(40 + r.nextInt(2400));
 		case "slowms" -> String.valueOf(900 + r.nextInt(4000));
 		case "pct" -> String.valueOf(70 + r.nextInt(29));
 		case "lowpct" -> String.valueOf(5 + r.nextInt(12));
 		case "num" -> digits(r, 7);
-		case "cif" -> digits(r, 9);
+		case "cif" -> String.valueOf(104_200_000 + r.nextInt(2500) * 37);
 		case "mid" -> digits(r, 6);
 		case "order" -> "ORD" + digits(r, 10);
 		case "ifsc" -> "NOVA000" + digits(r, 4);

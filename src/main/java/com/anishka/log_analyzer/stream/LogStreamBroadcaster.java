@@ -55,6 +55,13 @@ public class LogStreamBroadcaster {
 		}
 	}
 
+	/** Pushes a named event (e.g. "incident") to every connected browser. */
+	public void publish(String name, Object data) {
+		for (SseEmitter emitter : emitters) {
+			send(emitter, SseEmitter.event().name(name).data(data, MediaType.APPLICATION_JSON));
+		}
+	}
+
 	/** Keeps idle connections open through proxies and detects dead clients. */
 	@Scheduled(fixedDelay = 15_000)
 	public void heartbeat() {

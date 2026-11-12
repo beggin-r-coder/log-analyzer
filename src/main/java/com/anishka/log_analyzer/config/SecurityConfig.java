@@ -50,6 +50,10 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.POST, "/api/logs/ingest", "/api/simulator/pause", "/api/simulator/resume")
 				.hasRole("ADMIN")
 				.requestMatchers("/h2-console/**").hasRole("ADMIN")
+				// alert rules are configuration: viewers can read them, only admins change them
+				.requestMatchers(HttpMethod.POST, "/api/alert-rules", "/api/alert-rules/**").hasRole("ADMIN")
+				.requestMatchers(HttpMethod.PUT, "/api/alert-rules/**").hasRole("ADMIN")
+				.requestMatchers(HttpMethod.DELETE, "/api/alert-rules/**").hasRole("ADMIN")
 				.anyRequest().authenticated())
 				.formLogin(f -> f.loginPage("/login").defaultSuccessUrl("/", false).permitAll())
 				.logout(l -> l.logoutSuccessUrl("/login?logout"))

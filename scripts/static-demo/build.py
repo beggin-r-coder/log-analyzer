@@ -107,6 +107,7 @@ def to_static(html, page):
         ('Newest first, pushed from H2 the instant a log is stored', 'Newest first, streamed as each log is generated'),
         ('Log Analyzer · Spring Boot + H2', 'Log Analyzer · browser demo (the full app runs on Spring Boot + H2)'),
         ('Parse &amp; store in H2', 'Parse &amp; store'),
+        ('Evaluated every 20 seconds against the log store.', 'Evaluated every 10 seconds against the logs in this browser.'),
         ('Stored ${data.events} events in H2. They now appear on the dashboard.', 'Stored ${data.events} events in this browser. They now appear on the dashboard.'),
     ):
         html = html.replace(a, b)
@@ -126,7 +127,7 @@ def main():
         with open(os.path.join(DOCS, name + '.html'), 'w') as f:
             f.write(to_static(html, name))
     shutil.copy(os.path.join(STATIC, 'css', 'dashboard.css'), os.path.join(DOCS, 'css'))
-    for js in ('dashboard.js', 'ai.js', 'report.js', 'theme.js'):
+    for js in ('dashboard.js', 'ai.js', 'incidents.js', 'report.js', 'theme.js'):
         shutil.copy(os.path.join(STATIC, 'js', js), os.path.join(DOCS, 'js'))
     shutil.copy(os.path.join(STATIC, 'favicon.svg'), DOCS)
     open(os.path.join(DOCS, '.nojekyll'), 'w').close()

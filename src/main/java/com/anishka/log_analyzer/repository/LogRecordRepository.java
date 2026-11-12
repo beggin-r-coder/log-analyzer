@@ -60,6 +60,24 @@ public interface LogRecordRepository extends JpaRepository<LogRecord, Long>, Jpa
 
 	Optional<LogRecord> findTopByOrderByTimestampAsc();
 
+	/** [service, bucketIndex, events, errors] per {@code bucket}-minute slot, for SLA availability. */
+	@Query(value = """
+			select service, datediff('MINUTE', timestamp '2000-01-01 00:00:00', log_time) / :bucket as b,
+			       count(*), sum(case when level_rank >= 4 then 1 else 0 end)
+			from log_records where log_time >= :from and log_time < :to
+			group by service, b""", nativeQuery = true)
+	List<Object[]> serviceBucketCounts(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+			@Param("bucket") int bucketMinutes);
+
+	/** Failed (ERROR/FATAL) events of the given services, for business-impact estimates. */
+	@Query("select r from LogRecord r where r.timestamp >= :from and r.timestamp < :to and r.levelRank >= 4 and r.service in :services")
+	List<LogRecord> failedEvents(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+			@Param("services") java.util.Collection<String> services);
+
+	/** [service, message] of INFO events that mention an amount, to learn typical transaction values. */
+	@Query("select r.service, r.message from LogRecord r where r.timestamp >= :from and r.levelRank = 2 and (r.message like '%INR %' or r.message like '%amount=%')")
+	List<Object[]> amountSamples(@Param("from") LocalDateTime from, Pageable page);
+
 	/** Newest records at or above a severity, for NLP clustering. */
 	List<LogRecord> findByTimestampGreaterThanEqualAndLevelRankGreaterThanEqualOrderByTimestampDesc(LocalDateTime from,
 			int minRank, Pageable page);

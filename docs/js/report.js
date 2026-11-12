@@ -15,6 +15,7 @@
 	const INDIGO = [79, 70, 229], CYAN = [6, 182, 212];
 	const GOOD = [4, 120, 87], BAD = [190, 18, 60], NEUTRAL = [67, 56, 202];
 	const SEV = { CRITICAL: [225, 29, 72], HIGH: [239, 68, 68], MEDIUM: [217, 119, 6], DEGRADED: [217, 119, 6], LOW: [37, 99, 235], HEALTHY: [5, 150, 105] };
+	const STAT = { BREACHED: [225, 29, 72], AT_RISK: [217, 119, 6], MET: [5, 150, 105], OPEN: [225, 29, 72], ACKNOWLEDGED: [217, 119, 6], RESOLVED: [5, 150, 105] };
 	const LVL = { FATAL: [159, 18, 57], ERROR: [239, 68, 68], WARN: [217, 119, 6], INFO: [16, 185, 129], DEBUG: [100, 116, 139], TRACE: [100, 116, 139] };
 	const FORMAT_HEX = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#84cc16', '#64748b', '#a855f7'];
 	const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -34,7 +35,7 @@
 		if (s == null) return '';
 		return String(s)
 			.replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
-			.replace(/→/g, '->').replace(/⏎/g, ' ').replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');
+			.replace(/→/g, '->').replace(/₹\s?/g, 'Rs ').replace(/≥/g, '>=').replace(/⏎/g, ' ').replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');
 	}
 
 	function loadScript(src) {
@@ -154,6 +155,8 @@
 		doc.setProperties({ title: `${BRAND} Observability Report`, subject: 'Log analytics and incident report', author: 'Log Analyzer', creator: 'Log Analyzer' });
 
 		const generated = Date.now();
+		const biz = LA.business ? await LA.business.forReport().catch(() => null) : null;
+		const B = LA.business;
 		const rangeLabel = LA.RANGE_LABEL[s.range] || s.range;
 		const period = `${fmtDT(s.from)}  to  ${fmtDT(s.to)}`;
 		const tot = s.totals, prev = s.previous, errors = tot.error + tot.fatal;
@@ -465,7 +468,7 @@
 		}
 		const badgeCells = (colIndex) => (data) => {
 			if (data.section !== 'body' || data.column.index !== colIndex) return;
-			const c = SEV[data.cell.raw] || LVL[data.cell.raw];
+			const c = SEV[data.cell.raw] || LVL[data.cell.raw] || STAT[String(data.cell.raw).replace(' ', '_')];
 			if (c) { data.cell.styles.textColor = c; data.cell.styles.fontStyle = 'bold'; }
 		};
 		const when = (ms) => (LA.dayLabel(ms) ? LA.dayLabel(ms) + ', ' : new Date(ms).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + ', ') + new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -509,6 +512,11 @@
 		y += 2;
 		const findings = [];
 		findings.push(`Overall health is ${status.toLowerCase()} at ${s.healthScore.toFixed(1)}/100, with an error rate of ${pct(s.errorRate)} and a warning rate of ${pct(s.warnRate)}.`);
+		if (biz) {
+			const im = biz.impact, breached = im.sla.filter((x) => x.status === 'BREACHED').map((x) => x.service);
+			findings.push(`Estimated business impact: ${B.inr(im.valueAtRisk)} at risk across ${nf.format(im.failedTransactions)} failed customer transactions (~${nf.format(im.customersAffected)} customers)${breached.length ? '; out of SLA: ' + breached.join(', ') : '; every service within SLA'}.`);
+			if (im.incidents) findings.push(`${im.incidents} incident${im.incidents === 1 ? '' : 's'} raised by alert rules (${im.openIncidents} still active); mean time to acknowledge ${B.dur(im.mttaMinutes)}, mean time to resolve ${B.dur(im.mttrMinutes)}.`);
+		}
 		const dErr = LA.delta(errors, prev ? prev.error + prev.fatal : null, true);
 		if (dErr && dErr.dir !== 'flat') findings.push(`Errors are ${dErr.dir} ${Math.abs(dErr.pct).toFixed(1)}% compared with the previous ${rangeLabel.replace('Last ', '').toLowerCase()} (${nf.format(errors)} vs ${nf.format(prev.error + prev.fatal)}).`);
 		if (s.categories.length) {
@@ -624,9 +632,55 @@
 					}
 					break;
 				}
+				case 'impact': {
+					if (!biz) break;
+					const im = biz.impact;
+					ensure(70);
+					sectionTitle('Business impact', 'Estimated from failed payment events · ' + rangeLabel.toLowerCase());
+					card(M, y, CW, 30);
+					text(im.headline, M + 6, y + 7.5, { size: 8.6, color: SLATE, maxWidth: CW - 12 });
+					const bw = (CW - 12 - 9) / 4;
+					[['VALUE AT RISK', B.inr(im.valueAtRisk), BAD], ['FAILED TRANSACTIONS', nf.format(im.failedTransactions), NAVY],
+						['CUSTOMERS AFFECTED', nf.format(im.customersAffected), NAVY], ['MTTA / MTTR', B.dur(im.mttaMinutes) + ' / ' + B.dur(im.mttrMinutes), NEUTRAL]]
+						.forEach((b, n) => statBox(M + 6 + n * (bw + 3), y + 12.5, bw, 13.5, b[0], b[1], b[2]));
+					y += 36;
+					if (im.byService.length) {
+						table(['Service', 'Owner', 'Value at risk', 'Failed transactions', 'Customers affected'],
+							im.byService.map((x) => [x.service, x.owner, B.inr(x.valueAtRisk), nf.format(x.failedTransactions), nf.format(x.customersAffected)]),
+							{ columnStyles: { 2: { halign: 'right', fontStyle: 'bold' }, 3: { halign: 'right' }, 4: { halign: 'right' } } });
+					}
+					doc.setFontSize(7);
+					const method = doc.splitTextToSize(t('Method: ' + im.method), CW);
+					ensure(method.length * 3.2 + 6);
+					text(method, M, y - 4, { size: 7, color: FAINT });
+					y += method.length * 3.2 + 4;
+					break;
+				}
+				case 'sla': {
+					if (!biz) break;
+					const im = biz.impact;
+					ensure(50);
+					sectionTitle('SLA & error budget', `Availability in 5-minute slots against each service's target · ${im.slaBreached} breached, ${im.slaAtRisk} at risk, ${im.slaMet} met`);
+					table(['Service', 'Owner', 'Target', 'Availability', 'Unavailable', 'Error budget used', 'Status'],
+						im.sla.map((x) => [x.service, x.owner, x.target + '%', x.availability.toFixed(3) + '%', x.downMinutes + ' min', (x.budgetUsed >= 1000 ? '>999' : Math.round(x.budgetUsed)) + '%', x.status.replace('_', ' ')]),
+						{ columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } }, didParseCell: badgeCells(6) });
+					break;
+				}
+				case 'incidentdesk': {
+					if (!biz) break;
+					const l = biz.list, im = biz.impact;
+					ensure(40);
+					sectionTitle('Incidents', `${l.items.length} in period · ${l.open} open, ${l.acknowledged} acknowledged · MTTA ${B.dur(im.mttaMinutes)} · MTTR ${B.dur(im.mttrMinutes)}`);
+					if (!l.items.length) { text('No incidents in this period.', M, y + 2, { size: 9, color: SLATE }); y += 12; break; }
+					table(['ID', 'Severity', 'Incident', 'Owner', 'Opened', 'Duration', 'Status'],
+						l.items.slice(0, 30).map((x) => [B.incId(x), x.severity, x.title, x.owner, when(x.openedAt), B.dur(x.durationMinutes), x.status + (x.resolvedBy ? '\nby ' + x.resolvedBy : x.acknowledgedBy ? '\nby ' + x.acknowledgedBy : '')]),
+						{ styles: { fontSize: 7.4 }, columnStyles: { 0: { cellWidth: 17, textColor: FAINT }, 1: { cellWidth: 18 }, 3: { cellWidth: 27 }, 4: { cellWidth: 26 }, 5: { cellWidth: 19 }, 6: { cellWidth: 28 } },
+							didParseCell: (d) => { badgeCells(1)(d); if (d.section === 'body' && d.column.index === 6) { const c = STAT[String(d.cell.raw).split('\n')[0]]; if (c) { d.cell.styles.textColor = c; d.cell.styles.fontStyle = 'bold'; } } } });
+					break;
+				}
 				case 'incidents':
 					ensure(40);
-					sectionTitle('Top critical incidents', 'Error categories ranked by severity (errors per hour) and volume');
+					sectionTitle('Critical error patterns', 'Error categories ranked by severity (errors per hour) and volume');
 					if (!s.categories.length) { text('No errors in this period. All systems nominal.', M, y + 2, { size: 9, color: SLATE }); y += 12; break; }
 					table(['#', 'Incident category', 'Severity', 'Errors', 'Share', 'Affected services'],
 						s.categories.slice(0, 8).map((c, n) => [String(n + 1), c.name, c.severity, nf.format(c.count), c.share.toFixed(1) + '%', c.services.join(', ')]),

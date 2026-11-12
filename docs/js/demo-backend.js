@@ -53,19 +53,19 @@
 
 	function value(key) {
 		switch (key) {
-			case 'acct': return 'XXXXXX' + digits(4);
-			case 'card': return (rnd() < 0.5 ? '4' : '5') + 'XXXXXXXXXXX' + digits(4);
+			case 'acct': return 'XXXXXX' + (1000 + int(1800));
+			case 'card': return (rnd() < 0.5 ? '4' : '5') + 'XXXXXXXXXXX' + (2000 + int(1500));
 			case 'amt': { const x = rnd(); return money(x < 0.6 ? 50 + rnd() * 5000 : x < 0.9 ? 5000 + rnd() * 95000 : 100000 + rnd() * 1900000); }
 			case 'txn': return 'TXN' + digits(12);
 			case 'upitxn': return 'NOVA' + digits(14);
 			case 'rrn': return digits(12);
-			case 'vpa': return String.fromCharCode(97 + int(26)) + '****' + digits(2) + '@' + pick(D.PSP);
+			case 'vpa': return String.fromCharCode(97 + int(14)) + '****' + digits(2) + '@' + pick(D.PSP);
 			case 'ms': return String(40 + int(2400));
 			case 'slowms': return String(900 + int(4000));
 			case 'pct': return String(70 + int(29));
 			case 'lowpct': return String(5 + int(12));
 			case 'num': return digits(7);
-			case 'cif': return digits(9);
+			case 'cif': return String(104200000 + int(2500) * 37);
 			case 'mid': return digits(6);
 			case 'order': return 'ORD' + digits(10);
 			case 'ifsc': return 'NOVA000' + digits(4);
@@ -877,6 +877,324 @@
 	// =====================================================================
 	const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+
+	// =====================================================================
+	// BUSINESS IMPACT, SLA AND INCIDENTS (port of ImpactService + IncidentService)
+	// =====================================================================
+	const PAYMENT_SERVICES = new Set(['upi-switch', 'payment-gateway', 'card-auth', 'core-banking', 'atm-switch', 'netbanking-portal', 'mobile-banking-api']);
+	const OWNERS = { 'upi-switch': 'payments-upi', 'payment-gateway': 'payments-pg', 'card-auth': 'cards-platform', 'core-banking': 'cbs-sre', 'atm-switch': 'atm-ops',
+		'netbanking-portal': 'digital-channels', 'mobile-banking-api': 'digital-channels', 'fraud-engine': 'fraud-risk', 'kyc-service': 'onboarding',
+		'loan-origination': 'lending-tech', 'treasury-fx': 'treasury-it', 'insurance-claims': 'bancassurance' };
+	const DEFAULT_TICKET = { 'upi-switch': 1800, 'payment-gateway': 2500, 'card-auth': 3200, 'core-banking': 25000, 'atm-switch': 4000, 'netbanking-portal': 6000, 'mobile-banking-api': 2000 };
+	const SLA = { 'upi-switch': 99.5, 'core-banking': 99.9, 'card-auth': 99.5, 'payment-gateway': 99.5, 'netbanking-portal': 99.5, 'mobile-banking-api': 99.5, 'atm-switch': 99.5 };
+	const owner = (svc) => OWNERS[svc] || 'platform-sre';
+	const slaTarget = (svc) => SLA[svc] || 99.0;
+	const SLOT = 5, SLOT_MS = SLOT * MIN, RECOVERY_MIN = 10, SNOOZE_MIN = 5;
+	const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+	const sevRank = (s) => SEVERITIES.indexOf(s);
+	const AMOUNT = /(?:INR |amount=)([\d,]+(?:\.\d{1,2})?)/;
+	const TXN_ID = /\b(TXN\d{8,}|NOVA\d{10,}|ORD\d{6,}|SI\d{4,})\b/;
+	const CUSTOMER_ID = /(CIF\d{4,}|acct [X\d]{6,}|card[= ][\dX]{12,19}|\b[a-z]\*{4}\d{2}@[a-z]+)/;
+	const NB_MONEY = /fund-transfer|upi|bill-pay|payment/;
+	const ATTEMPTS = 1.3;
+	const METHOD = 'Estimated from ERROR/FATAL events of payment services. Amounts come from the failed event when logged, otherwise the median successful ticket size of that service. Customers are counted once per account, card, VPA or CIF; failures without one assume 1.3 attempts per customer. Availability is measured in 5-minute slots; a slot is unavailable when it has ≥3 errors and an error rate ≥5%.';
+	const ACTOR = 'you';
+
+	const inc = { list: [], events: [], rules: [], nextId: 1, nextEvent: 1, nextRule: 1, listeners: new Set() };
+	[['High error rate', '*', 'ERROR_RATE', 15, 5, 5, 'HIGH'], ['UPI payment failures', 'upi-switch', 'ERROR_COUNT', 8, 5, 0, 'CRITICAL'],
+		['Core banking posting errors', 'core-banking', 'ERROR_COUNT', 6, 5, 0, 'CRITICAL'], ['Card authorisation failures', 'card-auth', 'ERROR_COUNT', 8, 5, 0, 'HIGH'],
+		['Sustained errors (any service)', '*', 'ERROR_COUNT', 25, 15, 0, 'MEDIUM']]
+		.forEach(([name, service, metric, threshold, windowMinutes, minErrors, severity]) => inc.rules.push({ id: inc.nextRule++, name, service, metric, threshold, windowMinutes, minErrors, severity, enabled: true }));
+
+	const appliesTo = (r, svc) => r.service === '*' || r.service === svc;
+	function breaches(r, events, errors) {
+		if (r.metric === 'ERROR_COUNT') return errors >= r.threshold;
+		return events > 0 && errors >= Math.max(1, r.minErrors) && errors * 100 / events >= r.threshold;
+	}
+	const isActive = (i) => i.status !== 'RESOLVED';
+	const r1 = (v) => Math.round(v * 10) / 10;
+	const hhmm = (ms) => { const p = parts(ms); return pad(p.h) + ':' + pad(p.mi); };
+	const parseAmt = (s) => Number(String(s).replace(/,/g, '')) || 0;
+	/** Small seeded PRNG so reconstructed history is stable within a page load. */
+	const seeded = (seed) => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+	const hash = (s) => { let h = 0; for (const c of s) h = Math.imul(31, h) + c.charCodeAt(0) | 0; return h; };
+
+	function addEvent(i, at, type, actor, text) {
+		const e = { id: inc.nextEvent++, incidentId: i.id, at, type, actor, text };
+		inc.events.push(e);
+		return e;
+	}
+	function incDto(i) {
+		const end = i.resolvedAt || Date.now();
+		return { id: i.id, title: i.title, service: i.service, severity: i.severity, status: i.status, owner: i.owner, rule: i.ruleName, openedAt: i.openedAt,
+			acknowledgedAt: i.acknowledgedAt || null, acknowledgedBy: i.acknowledgedBy || null, resolvedAt: i.resolvedAt || null, resolvedBy: i.resolvedBy || null,
+			lastBreachAt: i.lastBreachAt, peakErrorRate: i.peakErrorRate, durationMinutes: Math.max(0, end - i.openedAt) / MIN };
+	}
+	function changed(i, change) {
+		const d = Object.assign(incDto(i), { change });
+		inc.listeners.forEach((fn) => fn(d));
+	}
+	const describe = (b) => `${b.errors} errors / ${b.events} events (${(b.events ? b.errors * 100 / b.events : 0).toFixed(1)}%) in ${b.window} min`;
+	const rate = (b) => b.events ? b.errors * 100 / b.events : 0;
+
+	function openIncident(svc, b, at, windowStart) {
+		const errors = store.records.filter((r) => r.service === svc && r.levelRank >= 4 && r.timestamp >= windowStart && r.timestamp <= at + 1000);
+		const counts = new Map();
+		errors.forEach((r) => counts.set(r.category || 'Errors', (counts.get(r.category || 'Errors') || 0) + 1));
+		const category = [...counts.entries()].sort((a, c) => c[1] - a[1])[0];
+		const sample = errors[errors.length - 1];
+		const play = sample ? playMatch(sample.message) : null;
+		const i = { id: inc.nextId++, service: svc, severity: b.rule.severity, status: 'OPEN', ruleName: b.rule.name, owner: owner(svc), openedAt: at, lastBreachAt: at, peakErrorRate: r1(rate(b)) };
+		i.title = cut((play && play.id !== 'generic' ? play.title : category ? category[0] : 'Errors') + ' on ' + svc, 200);
+		inc.list.push(i);
+		let text = `Rule "${b.rule.name}" fired: ${describe(b)}. Paged ${i.owner} on-call.`;
+		if (sample) text += '\nLatest error: ' + cut(firstLine(sample.message), 300);
+		if (play && play.recovery && play.recovery.length) text += '\nSuggested first step: ' + play.recovery[0];
+		addEvent(i, at, 'OPENED', 'system', text);
+		return i;
+	}
+
+	function evaluate(now) {
+		const enabled = inc.rules.filter((r) => r.enabled);
+		const strongest = new Map();
+		const windows = [...new Set(enabled.map((r) => r.windowMinutes))];
+		for (const w of windows) {
+			const stats = new Map();
+			for (let k = store.records.length - 1; k >= 0; k--) {
+				const r = store.records[k];
+				if (r.timestamp < now - w * MIN) { if (r.timestamp < now - 4 * HOUR) break; continue; }
+				if (r.timestamp > now + 1000) continue;
+				const s = stats.get(r.service) || [0, 0];
+				s[0]++; if (r.levelRank >= 4) s[1]++;
+				stats.set(r.service, s);
+			}
+			for (const [svc, [events, errors]] of stats) {
+				for (const rule of enabled.filter((r) => r.windowMinutes === w)) {
+					if (appliesTo(rule, svc) && breaches(rule, events, errors)) {
+						const b = { rule, events, errors, window: w }, cur = strongest.get(svc);
+						if (!cur || sevRank(rule.severity) > sevRank(cur.rule.severity)) strongest.set(svc, b);
+					}
+				}
+			}
+		}
+		for (const [svc, b] of strongest) {
+			const active = inc.list.find((i) => i.service === svc && isActive(i));
+			if (!active) {
+				const snoozed = inc.list.some((i) => i.service === svc && i.resolvedAt && i.resolvedBy !== 'auto-recovery' && i.resolvedAt > now - SNOOZE_MIN * MIN);
+				if (snoozed) continue;
+				const i = openIncident(svc, b, now, now - b.window * MIN);
+				changed(i, 'opened');
+				continue;
+			}
+			active.lastBreachAt = now;
+			active.peakErrorRate = Math.max(active.peakErrorRate, r1(rate(b)));
+			if (sevRank(b.rule.severity) > sevRank(active.severity)) {
+				addEvent(active, now, 'UPDATED', 'system', `Escalated ${active.severity} → ${b.rule.severity} by rule "${b.rule.name}" (${describe(b)}).`);
+				active.severity = b.rule.severity;
+				changed(active, 'escalated');
+			}
+		}
+		for (const i of inc.list.filter(isActive)) {
+			if (!strongest.has(i.service) && i.lastBreachAt < now - RECOVERY_MIN * MIN) {
+				i.status = 'RESOLVED'; i.resolvedAt = now; i.resolvedBy = 'auto-recovery';
+				addEvent(i, now, 'RECOVERED', 'system', `Healthy for ${RECOVERY_MIN} minutes — auto-resolved. Errors last breached the rule at ${hhmm(i.lastBreachAt)}.`);
+				changed(i, 'resolved');
+			}
+		}
+	}
+
+	/** Replays the 5-minute rules over the seeded history, like IncidentService.backfill. */
+	function backfill(from, to) {
+		const rules = inc.rules.filter((r) => r.enabled && r.windowMinutes <= SLOT);
+		const series = new Map();
+		for (const r of store.records) {
+			if (r.timestamp < from || r.timestamp >= to) continue;
+			const m = series.get(r.service) || new Map(), b = Math.floor(r.timestamp / SLOT_MS), v = m.get(b) || [0, 0];
+			v[0]++; if (r.levelRank >= 4) v[1]++;
+			m.set(b, v); series.set(r.service, m);
+		}
+		const created = [];
+		const record = (svc, worst, openB, lastB) => {
+			const opened = (openB + 1) * SLOT_MS, lastBreach = (lastB + 1) * SLOT_MS, rr = seeded(opened ^ hash(svc));
+			let acked = opened + (60 + Math.floor(rr() * 420)) * 1000;
+			const resolved = lastBreach + (120 + Math.floor(rr() * 600)) * 1000;
+			if (acked >= resolved) acked = opened + (resolved - opened) / 3;
+			if (resolved >= to) return;
+			const i = openIncident(svc, worst, opened, openB * SLOT_MS);
+			const team = i.owner + ' on-call';
+			Object.assign(i, { lastBreachAt: lastBreach, acknowledgedAt: acked, acknowledgedBy: team, resolvedAt: resolved, resolvedBy: team, status: 'RESOLVED' });
+			addEvent(i, acked, 'ACKNOWLEDGED', team, 'Acknowledged, investigating.');
+			const play = playMatch(i.title);
+			const fix = play && play.recovery && play.recovery.length > 1 ? play.recovery[Math.floor(rr() * play.recovery.length)] : 'Mitigated; error rate back to baseline.';
+			addEvent(i, resolved, 'RESOLVED', team, 'Resolved. ' + fix);
+			created.push(i);
+		};
+		for (const [svc, m] of series) {
+			let openB = null, lastB = null, worst = null;
+			for (const b of [...m.keys()].sort((a, c) => a - c)) {
+				const [events, errors] = m.get(b);
+				if (openB != null && b > lastB + RECOVERY_MIN / SLOT) { record(svc, worst, openB, lastB); openB = null; }
+				let hit = null;
+				for (const rule of rules) {
+					if (appliesTo(rule, svc) && breaches(rule, events, errors) && (!hit || sevRank(rule.severity) > sevRank(hit.rule.severity))) hit = { rule, events, errors, window: SLOT };
+				}
+				if (hit) {
+					if (openB == null) { openB = b; worst = hit; } else if (sevRank(hit.rule.severity) > sevRank(worst.rule.severity) || rate(hit) > rate(worst)) worst = hit;
+					lastB = b;
+				}
+			}
+			if (openB != null && (lastB + RECOVERY_MIN / SLOT + 1) * SLOT_MS < to) record(svc, worst, openB, lastB);
+		}
+		// ids in time order, like a real incident tracker
+		inc.list.sort((a, c) => a.openedAt - c.openedAt);
+		const remap = new Map();
+		inc.list.forEach((i, n) => { remap.set(i.id, n + 1); i.id = n + 1; });
+		inc.events.forEach((e) => { e.incidentId = remap.get(e.incidentId); });
+		inc.nextId = inc.list.length + 1;
+		return created.length;
+	}
+
+	function typicalTickets(to) {
+		const samples = new Map();
+		for (const r of store.records) {
+			if (r.timestamp < to - 24 * HOUR || r.levelRank !== 2) continue;
+			const m = AMOUNT.exec(r.message);
+			if (m) { const l = samples.get(r.service) || []; l.push(parseAmt(m[1])); samples.set(r.service, l); }
+		}
+		const out = new Map();
+		samples.forEach((l, svc) => { if (l.length >= 5) { l.sort((a, b) => a - b); out.set(svc, l[Math.floor(l.length / 2)]); } });
+		return out;
+	}
+
+	function lostMoney(from, to, services) {
+		const tickets = typicalTickets(to);
+		const agg = new Map(), txnIds = new Set(), customerIds = new Set();
+		let anon = 0;
+		for (const r of store.records) {
+			if (r.timestamp < from || r.timestamp >= to || r.levelRank < 4 || !services.has(r.service)) continue;
+			const msg = r.message || '';
+			if (r.service === 'netbanking-portal' && !NB_MONEY.test(msg)) continue;
+			const tm = TXN_ID.exec(msg);
+			if (tm) { if (txnIds.has(tm[1])) continue; txnIds.add(tm[1]); }
+			const a = agg.get(r.service) || [0, 0, 0, 0];
+			const am = AMOUNT.exec(msg);
+			a[0] += am ? parseAmt(am[1]) : (tickets.get(r.service) || DEFAULT_TICKET[r.service] || 2000);
+			a[1]++;
+			const cm = CUSTOMER_ID.exec(msg);
+			if (cm) { if (!customerIds.has(cm[1])) { customerIds.add(cm[1]); a[2]++; } } else { anon++; a[3]++; }
+			agg.set(r.service, a);
+		}
+		let total = 0, txns = 0;
+		const byService = [...agg.entries()].map(([service, a]) => { total += a[0]; txns += a[1]; return { service, valueAtRisk: round2(a[0]), failedTransactions: a[1], customersAffected: a[2] + Math.round(a[3] / ATTEMPTS), owner: owner(service) }; })
+			.sort((a, b) => b.valueAtRisk - a.valueAtRisk);
+		return { value: total, failedTxns: txns, customers: customerIds.size + Math.round(anon / ATTEMPTS), byService };
+	}
+
+	function slaRows(from, to) {
+		const slots = Math.max(1, Math.floor((to - from) / SLOT_MS));
+		const per = new Map();
+		const buckets = new Map();
+		for (const r of store.records) {
+			if (r.timestamp < from || r.timestamp >= to + MIN) continue;
+			const key = r.service + '|' + Math.floor(r.timestamp / SLOT_MS), v = buckets.get(key) || [0, 0];
+			v[0]++; if (r.levelRank >= 4) v[1]++;
+			buckets.set(key, v);
+		}
+		buckets.forEach(([events, errors], key) => {
+			const svc = key.slice(0, key.lastIndexOf('|')), a = per.get(svc) || [0, 0, 0];
+			a[1] += events; a[2] += errors;
+			if (errors >= 3 && errors * 100 / Math.max(1, events) >= 5) a[0]++;
+			per.set(svc, a);
+		});
+		return [...per.entries()].map(([service, [bad, events, errors]]) => {
+			const target = slaTarget(service), availability = 100 * (slots - Math.min(bad, slots)) / slots;
+			const budget = (100 - target) / 100 * slots * SLOT, down = bad * SLOT;
+			const used = budget <= 0 ? (down > 0 ? 100 : 0) : down * 100 / budget;
+			return { service, owner: owner(service), target, availability: Math.round(availability * 1000) / 1000, downMinutes: down, budgetMinutes: r1(budget),
+				budgetUsed: r1(used), status: used >= 100 ? 'BREACHED' : used >= 75 ? 'AT_RISK' : 'MET', events, errors };
+		}).sort((a, b) => b.budgetUsed - a.budgetUsed || a.service.localeCompare(b.service));
+	}
+
+	const inr = (v) => v >= 1e7 ? '₹' + (v / 1e7).toFixed(2) + ' Cr' : v >= 1e5 ? '₹' + (v / 1e5).toFixed(2) + ' L' : '₹' + Math.round(v).toLocaleString('en-US');
+
+	function impact(rangeCode) {
+		const range = rangeOf(rangeCode), now = Date.now();
+		let from = now - RANGES[range][0];
+		const earliest = store.records.length ? store.records[0].timestamp : now;
+		if (earliest > from) from = earliest;
+		const m = lostMoney(from, now + MIN, PAYMENT_SERVICES), sla = slaRows(from, now);
+		const list = inc.list.filter((i) => i.openedAt >= from);
+		const acks = list.filter((i) => i.acknowledgedAt), fixes = list.filter((i) => i.resolvedAt);
+		const avg = (l, f) => l.length ? Math.round(l.reduce((a, i) => a + (f(i) - i.openedAt) / 1000, 0) / l.length / 6) / 10 : null;
+		const breached = sla.filter((s) => s.status === 'BREACHED').map((s) => s.service), atRisk = sla.filter((s) => s.status === 'AT_RISK').length;
+		let headline = m.failedTxns === 0 ? 'No failed customer transactions in this period.'
+			: `${inr(m.value)} in ${m.failedTxns.toLocaleString('en-US')} failed customer transactions${m.byService.length ? ', mostly on ' + m.byService[0].service : ''}.`;
+		headline += breached.length ? ` ${breached.join(', ')} ${breached.length === 1 ? 'is' : 'are'} out of SLA.` : ' All services within SLA.';
+		return { range, from, to: now, currency: 'INR', valueAtRisk: round2(m.value), failedTransactions: m.failedTxns, customersAffected: m.customers, byService: m.byService, sla,
+			incidents: list.length, openIncidents: list.filter(isActive).length, mttaMinutes: avg(acks, (i) => i.acknowledgedAt), mttrMinutes: avg(fixes, (i) => i.resolvedAt),
+			slaBreached: breached.length, slaAtRisk: atRisk, slaMet: sla.length - breached.length - atRisk, headline, method: METHOD };
+	}
+
+	function incidentList(status, rangeCode) {
+		const range = rangeOf(rangeCode || '7d'), from = Date.now() - RANGES[range][0];
+		const inR = inc.list.filter((i) => i.openedAt >= from);
+		const all = [...new Set([...inc.list.filter(isActive), ...inR])]
+			.sort((a, b) => (isActive(b) - isActive(a)) || b.openedAt - a.openedAt);
+		const st = (status || '').toLowerCase();
+		const items = all.filter((i) => !st || st === 'all' || (st === 'active' ? isActive(i) : i.status.toLowerCase() === st)).map(incDto);
+		return { range, open: all.filter((i) => i.status === 'OPEN').length, acknowledged: all.filter((i) => i.status === 'ACKNOWLEDGED').length,
+			resolved: inR.filter((i) => !isActive(i)).length, total: inR.length, items };
+	}
+
+	function getIncident(id) {
+		const i = inc.list.find((x) => x.id === id);
+		if (!i) { const e = new Error('Not found: incident ' + id); e.status = 404; throw e; }
+		return i;
+	}
+
+	function incidentDetail(id) {
+		const i = getIncident(id), d = incDto(i);
+		d.timeline = inc.events.filter((e) => e.incidentId === id).sort((a, b) => a.at - b.at || a.id - b.id)
+			.map((e) => ({ id: e.id, at: e.at, type: e.type, actor: e.actor, text: e.text }));
+		const start = i.openedAt - SLOT_MS, end = i.resolvedAt || Date.now();
+		if (PAYMENT_SERVICES.has(i.service)) {
+			const m = lostMoney(start, end, new Set([i.service]));
+			d.impact = { valueAtRisk: round2(m.value), failedTransactions: m.failedTxns, customersAffected: m.customers };
+		} else d.impact = null;
+		d.windowFrom = start; d.windowTo = end;
+		return d;
+	}
+
+	function acknowledge(id) {
+		const i = getIncident(id);
+		if (i.status !== 'OPEN') return;
+		const now = Date.now();
+		Object.assign(i, { status: 'ACKNOWLEDGED', acknowledgedAt: now, acknowledgedBy: ACTOR });
+		addEvent(i, now, 'ACKNOWLEDGED', ACTOR, 'Acknowledged, investigating.');
+		changed(i, 'acknowledged');
+	}
+	function resolveIncident(id, note) {
+		const i = getIncident(id);
+		if (!isActive(i)) return;
+		const now = Date.now();
+		if (!i.acknowledgedAt) Object.assign(i, { acknowledgedAt: now, acknowledgedBy: ACTOR });
+		Object.assign(i, { status: 'RESOLVED', resolvedAt: now, resolvedBy: ACTOR });
+		addEvent(i, now, 'RESOLVED', ACTOR, note && note.trim() ? 'Resolved. ' + note.trim() : 'Resolved.');
+		changed(i, 'resolved');
+	}
+	function saveRule(id, b) {
+		const r = id == null ? { id: inc.nextRule++ } : inc.rules.find((x) => x.id === id);
+		if (!r) { const e = new Error('Not found: rule ' + id); e.status = 404; throw e; }
+		Object.assign(r, {
+			name: blank(b.name) || 'Untitled rule', service: blank(b.service) || '*', metric: b.metric === 'ERROR_COUNT' ? 'ERROR_COUNT' : 'ERROR_RATE',
+			threshold: Math.max(0.1, Number(b.threshold) || 0), windowMinutes: Math.max(1, Math.min(Number(b.windowMinutes) || 5, 120)),
+			minErrors: Math.max(0, Number(b.minErrors) || 0), severity: SEVERITIES.includes(b.severity) ? b.severity : 'HIGH', enabled: b.enabled !== false
+		});
+		if (id == null) inc.rules.push(r);
+		return r;
+	}
+	const bodyJson = (body) => { try { return body ? JSON.parse(String(body)) : {}; } catch (e) { return {}; } };
+
 	function checkBody(body) {
 		if (!body || !String(body).trim()) { const e = new Error('Request body is empty – send raw log text.'); e.status = 400; throw e; }
 		if (String(body).length > 5000000) { const e = new Error('Payload too large (max 5 MB per request).'); e.status = 400; throw e; }
@@ -914,6 +1232,23 @@
 			const previews = parsed.map((p) => dto(toRecord(p, true))); // not stored
 			return json({ events: previews.length, stored: false, formats: formatCounts(previews), preview: previews.slice(0, 200) });
 		}
+		if (method === 'GET' && path === '/api/impact') return json(impact(params.get('range')));
+		if (method === 'GET' && path === '/api/incidents') return json(incidentList(params.get('status'), params.get('range')));
+		if (method === 'GET' && (m = path.match(/^\/api\/incidents\/(\d+)$/))) return json(incidentDetail(Number(m[1])));
+		if (method === 'POST' && (m = path.match(/^\/api\/incidents\/(\d+)\/ack$/))) { acknowledge(Number(m[1])); return json(incidentDetail(Number(m[1]))); }
+		if (method === 'POST' && (m = path.match(/^\/api\/incidents\/(\d+)\/resolve$/))) { resolveIncident(Number(m[1]), bodyJson(body).note); return json(incidentDetail(Number(m[1]))); }
+		if (method === 'POST' && (m = path.match(/^\/api\/incidents\/(\d+)\/notes$/))) {
+			const text = blank(bodyJson(body).text);
+			if (!text) return json({ error: 'Note is empty' }, 400);
+			const i = getIncident(Number(m[1]));
+			addEvent(i, Date.now(), 'NOTE', ACTOR, cut(text, 2000));
+			changed(i, 'note');
+			return json(incidentDetail(i.id));
+		}
+		if (method === 'GET' && path === '/api/alert-rules') return json(inc.rules);
+		if (method === 'POST' && path === '/api/alert-rules') return json(saveRule(null, bodyJson(body)));
+		if (method === 'PUT' && (m = path.match(/^\/api\/alert-rules\/(\d+)$/))) return json(saveRule(Number(m[1]), bodyJson(body)));
+		if (method === 'DELETE' && (m = path.match(/^\/api\/alert-rules\/(\d+)$/))) { inc.rules = inc.rules.filter((r) => r.id !== Number(m[1])); return new Response(null, { status: 204 }); }
 		if (path === '/api/simulator') return json(simStatus());
 		if (method === 'POST' && path === '/api/simulator/pause') { sim.running = false; return json(simStatus()); }
 		if (method === 'POST' && path === '/api/simulator/resume') { sim.running = true; return json(simStatus()); }
@@ -959,17 +1294,19 @@
 			this.readyState = 0;
 			this.handlers = {};
 			this.onLogs = (dtos) => this.emit('logs', { data: JSON.stringify(dtos) });
+			this.onIncident = (d) => this.emit('incident', { data: JSON.stringify(d) });
 			setTimeout(() => {
 				if (this.readyState === 2) return;
 				this.readyState = 1;
 				store.listeners.add(this.onLogs);
+				inc.listeners.add(this.onIncident);
 				this.emit('open', {});
 			}, 50);
 		}
 		addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }
 		removeEventListener(type, fn) { this.handlers[type] = (this.handlers[type] || []).filter((f) => f !== fn); }
 		emit(type, ev) { (this.handlers[type] || []).forEach((fn) => fn(Object.assign({ type }, ev))); if (typeof this['on' + type] === 'function') this['on' + type](ev); }
-		close() { this.readyState = 2; store.listeners.delete(this.onLogs); }
+		close() { this.readyState = 2; store.listeners.delete(this.onLogs); inc.listeners.delete(this.onIncident); }
 	}
 	DemoEventSource.CONNECTING = 0; DemoEventSource.OPEN = 1; DemoEventSource.CLOSED = 2;
 	window.EventSource = function (url, opts) {
@@ -998,7 +1335,7 @@
 	// =====================================================================
 	let markReady;
 	const ready = new Promise((r) => { markReady = r; });
-	window.LA_DEMO = { store, parseText, parseLine, template, summary, seededMs: null };
+	window.LA_DEMO = { store, parseText, parseLine, template, summary, inc, impact, evaluate, seededMs: null };
 	document.addEventListener('DOMContentLoaded', () => {
 		const text = document.getElementById('loaderText'), bar = document.getElementById('loaderBar');
 		if (text) text.textContent = 'Generating 2 days of simulated bank logs…';
@@ -1006,8 +1343,12 @@
 		setTimeout(() => { // let the loading screen paint first
 			const t0 = performance.now();
 			seed();
+			store.records.sort((x, y) => x.timestamp - y.timestamp);
+			backfill(store.records.length ? store.records[0].timestamp : Date.now(), Date.now());
+			evaluate(Date.now());
 			window.LA_DEMO.seededMs = Math.round(performance.now() - t0);
 			setInterval(tick, INTERVAL_MS);
+			setInterval(() => evaluate(Date.now()), 10000);
 			markReady();
 		}, 80);
 	});

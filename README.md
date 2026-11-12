@@ -168,8 +168,33 @@ Deploy from the `Dockerfile`, set `APP_PASSWORD` (and `DEMO_MODE=true` for a dem
 | `SECURE_COOKIES` | `true` in prod | HTTPS-only session cookies |
 | `H2_CONSOLE_ENABLED` | `true` locally, `false` in prod | H2 web console |
 | `APP_SECURITY_ENABLED` | `true` | Set to `false` only on a private network |
+| `NOTIFY_WEBHOOK_URL` | empty | Slack or Microsoft Teams incoming webhook; new and resolved incidents are posted there |
+| `DASHBOARD_URL` | empty | Public dashboard address, added as a link to notifications |
+| `SLA_TARGETS` | `upi-switch:99.5,core-banking:99.9,…` | Availability target per service (percent) |
+| `SLA_DEFAULT` | `99.0` | Target for services not listed in `SLA_TARGETS` |
+| `INCIDENT_EVALUATE_MS` | `20000` | How often alert rules are evaluated |
 
 ## Features
+
+### For managers: business impact and incidents
+
+- **Business Impact:** an estimate of the money at risk (₹, shown in lakh / crore), failed customer transactions and
+  customers affected in the selected range, with the services where it failed. Amounts are read from the failed
+  events where logged, otherwise from the median successful ticket size of that service; retries of the same
+  transaction or customer are counted once. "How it's estimated" shows the method.
+- **SLA & error budget:** availability per service in 5-minute slots against its target (UPI 99.5%, core banking
+  99.9%, …), minutes of downtime, error budget used and a Met / At risk / Breached status.
+- **Incident workflow:** alert rules (error rate or error count over a window, per service or for all) run every
+  20 seconds. A breach opens an incident, routed to the owning on-call team (e.g. `payments-upi`), with the latest error and
+  a suggested first step from the failure playbook. People **acknowledge**, add **notes** and **resolve** it. Each incident
+  has a timeline, its own business impact, links to its logs and to error analysis, and "Copy summary" for a
+  post-incident report. Incidents close by themselves after 10 healthy minutes. The incidents the rules would have raised
+  are reconstructed from stored history on first start, so MTTA / MTTR are meaningful straight away.
+- **Alert rules editor** (admins; viewers can read the rules), a nav badge with the active incident count, a toast when a new
+  incident opens, and an optional Slack / Teams webhook.
+- All of this is in the PDF report: impact figures, the SLA table and the incident list, plus key findings on the cover.
+
+### Platform
 
 - **Persistent H2 database** (`./data/bfsi-logs.mv.db`): data survives restarts, with 7-day retention.
 - **Live BFSI log stream** from 12 services (core banking, UPI switch, card auth, payment gateway, ATM switch,
@@ -185,7 +210,7 @@ Deploy from the `Dockerfile`, set `APP_PASSWORD` (and `DEMO_MODE=true` for a dem
 - **Live log stream:** a real-time feed pushed over Server-Sent Events (`/api/logs/stream`) the moment a log is committed
   to H2. Each row shows time, day and date with Today / Yesterday / weekday labels, grouped by day. It supports pause,
   level and text filters, and a click for the raw line.
-- **Customisable dashboard:** add, remove and reorder 20 widgets (8 KPIs, 8 charts, live feed and tables) from the
+- **Customisable dashboard:** add, remove and reorder 24 widgets (8 KPIs, 3 business widgets, 8 charts, live feed and tables) from the
   Customize drawer. The layout is saved in the browser.
 - **PDF export:** a professional multi-page A4 report with a cover page, executive summary, auto-generated key findings,
   a contents list with page numbers, high-resolution charts, colour-coded tables, and branded headers/footers with
@@ -236,11 +261,15 @@ On Windows PowerShell use `$env:GEMINI_API_KEY="your-key"`.
 GET  /api/dashboard?range=24h&tz=330
 GET  /api/logs?q=npci timeout&levels=ERROR,FATAL&service=upi-switch&sort=timestamp&dir=desc&page=0&size=50
 POST /api/ai/overview?range=24h      POST /api/ai/logs/{id}      GET /api/ai/logs/{id}/context      GET /api/ai/status
-GET  /api/logs/stream          (Server-Sent Events: "logs" events with newly stored records)
+GET  /api/logs/stream          (Server-Sent Events: "logs" with newly stored records, "incident" on incident changes)
 GET  /api/logs/{id}            GET /api/logs/facets          GET /api/logs/export?...
 POST /api/logs/ingest?service=my-app   (text/plain body, any format; stored)
 POST /api/logs/parse                   (preview only)
 POST /api/simulator/pause | resume | incident?service=card-auth&minutes=5
+GET  /api/impact?range=24h                     (money at risk, failed transactions, customers, SLA, MTTA/MTTR)
+GET  /api/incidents?status=active|all|resolved&range=7d      GET /api/incidents/{id}   (with timeline and impact)
+POST /api/incidents/{id}/ack     POST /api/incidents/{id}/resolve {"note": "..."}     POST /api/incidents/{id}/notes {"text": "..."}
+GET  /api/alert-rules            POST/PUT/DELETE /api/alert-rules[/{id}]   (admin only)
 ```
 
 ```bash
