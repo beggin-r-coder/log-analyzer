@@ -12,10 +12,8 @@ services:
         value: "true"
       - key: APP_PASSWORD        # your admin password; visitors use "Explore as guest"
         sync: false
-      - key: GEMINI_API_KEY      # optional; leave empty for the offline NLP analysis
-        sync: false
-      - key: AI_MAX_CALLS_PER_HOUR
-        value: "20"
+      # Error analysis runs on the built-in NLP engine; Gemini is off (AI_ENABLED=false).
+      # To turn it on later add AI_ENABLED=true and GEMINI_API_KEY here.
       - key: SEED_DAYS
         value: "2"
       - key: JAVA_OPTS           # fits the free plan's 512 MB

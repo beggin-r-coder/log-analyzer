@@ -17,12 +17,14 @@ public class DashboardController {
 	private final boolean demoMode;
 	private final String guestName;
 	private final String guestPassword;
+	private final boolean aiEnabled;
 
 	public DashboardController(@Value("${app.brand.name:NovaBank}") String brandName,
 			@Value("${app.brand.tagline:BFSI Observability}") String brandTagline,
 			@Value("${spring.h2.console.enabled:false}") boolean h2Console,
 			@Value("${app.demo.enabled:false}") boolean demoMode, @Value("${app.demo.username:guest}") String guestName,
-			@Value("${app.demo.password:demo}") String guestPassword) {
+			@Value("${app.demo.password:demo}") String guestPassword, @Value("${ai.gemini.enabled:false}") boolean aiEnabled) {
+		this.aiEnabled = aiEnabled;
 		this.demoMode = demoMode;
 		this.guestName = guestName;
 		this.guestPassword = guestPassword;
@@ -45,6 +47,7 @@ public class DashboardController {
 		model.addAttribute("demoMode", demoMode);
 		model.addAttribute("guestName", guestName);
 		model.addAttribute("guestPassword", guestPassword);
+		model.addAttribute("aiEnabled", aiEnabled);
 	}
 
 	@GetMapping("/")

@@ -1,4 +1,4 @@
-/* AI Log Analyzer – live dashboard. Data comes from the Spring Boot REST API backed by H2. */
+/* Log Analyzer – live dashboard. Data comes from the Spring Boot REST API backed by H2. */
 (function () {
 	'use strict';
 
@@ -923,7 +923,7 @@
 		{ id: 'svcerrors', group: 'Charts', name: 'Errors by service', desc: 'Error and warning counts per service', icon: '▥' },
 		{ id: 'formats', group: 'Charts', name: 'Log format mix', desc: 'Formats detected by the universal parser', icon: '{}' },
 		{ id: 'livefeed', group: 'Live & tables', name: 'Live log stream', desc: 'Real-time feed pushed from the database', icon: '●' },
-		{ id: 'aianalysis', group: 'Live & tables', name: 'AI error analysis', desc: 'Gemini root cause, impact and recovery steps', icon: '✦' },
+		{ id: 'aianalysis', group: 'Live & tables', name: window.APP_USER && window.APP_USER.ai ? 'AI error analysis' : 'Error analysis', desc: window.APP_USER && window.APP_USER.ai ? 'Gemini root cause, impact and recovery steps' : 'NLP root cause, impact and recovery steps', icon: '✦' },
 		{ id: 'incidents', group: 'Live & tables', name: 'Top critical incidents', desc: 'Categories ranked by severity', icon: '▲' },
 		{ id: 'services', group: 'Live & tables', name: 'Service health', desc: 'Per-service volume and error rate', icon: '☰' },
 		{ id: 'explorer', group: 'Live & tables', name: 'Log explorer', desc: 'Search, filter, sort and export logs', icon: '⌕' }
@@ -1153,7 +1153,7 @@
 	/** Opens the single-error analysis panel (handled by ai.js). Offered for every level; errors are emphasised. */
 	function analyzeButton(r) {
 		const strong = r.level === 'ERROR' || r.level === 'FATAL' || r.level === 'WARN';
-		return `<button class="btn small ${strong ? 'dark' : 'ghost'}" data-analyze="${r.id}">✦ Analyze${strong ? ' with AI' : ''}</button>`;
+		return `<button class="btn small ${strong ? 'dark' : 'ghost'}" data-analyze="${r.id}">✦ Analyze${strong && window.APP_USER && window.APP_USER.ai ? ' with AI' : ''}</button>`;
 	}
 
 	function setFeedStatus(kind) {

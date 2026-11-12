@@ -1,4 +1,4 @@
-/* AI Log Analyzer – AI error analysis (Gemini + local NLP).
+/* Log Analyzer – error analysis: local NLP engine, optionally Gemini (AI_ENABLED=true).
  * Dashboard widget: analysis of all errors in the selected range.
  * Side panel: analysis of one log event with its NLP context. */
 (function () {
@@ -25,7 +25,7 @@
 
 	function meta(a) {
 		const bits = [];
-		bits.push(a.source === 'GEMINI' ? `Gemini · ${esc(a.model)}` : 'Offline NLP playbook');
+		bits.push(a.source === 'GEMINI' ? `Gemini · ${esc(a.model)}` : 'NLP engine: pattern mining + BFSI playbook');
 		if (a.latencyMs) bits.push((a.latencyMs / 1000).toFixed(1) + 's');
 		const tokens = a.usage && (a.usage.totalTokenCount || a.usage.total_token_count);
 		if (tokens) bits.push(nf.format(tokens) + ' tokens');
@@ -70,7 +70,7 @@
 		lines.push('### Recovery steps', ...(a.recoverySteps || []).map((x, i) => `${i + 1}. ${x}`), '');
 		lines.push('### Prevention', ...(a.preventiveActions || []).map((x) => `- ${x}`), '');
 		if (a.evidence && a.evidence.length) lines.push('### Evidence', ...a.evidence.map((x) => `- ${x}`), '');
-		lines.push(`_${a.source === 'GEMINI' ? 'Analysed by Gemini (' + a.model + ')' : 'Offline NLP analysis'} on ${new Date(a.generatedAt).toLocaleString()}_`);
+		lines.push(`_${a.source === 'GEMINI' ? 'Analysed by Gemini (' + a.model + ')' : 'NLP analysis (pattern mining + BFSI playbook)'} on ${new Date(a.generatedAt).toLocaleString()}_`);
 		return lines.join('\n');
 	}
 
@@ -112,11 +112,16 @@
 		const s = ai.status;
 		if (!s) return;
 		const el = $('aiStatus');
-		el.innerHTML = s.configured
-			? `<span class="dot" style="background:#16a34a"></span>Gemini · ${esc(s.model)}`
-			: `<span class="dot" style="background:#d97706"></span>Offline NLP mode`;
-		el.title = s.configured ? 'Gemini is configured. Personal data is redacted before sending.' : 'Set GEMINI_API_KEY to enable Gemini. The local NLP playbook is used meanwhile.';
-		$('aiRunText').textContent = ai.overview ? 'Re-run analysis' : s.configured ? 'Analyze errors' : 'Run offline analysis';
+		if (!s.enabled) {
+			el.innerHTML = `<span class="dot" style="background:#16a34a"></span>NLP engine · runs locally`;
+			el.title = 'Analysis runs on the built-in NLP engine; no log data leaves the application.';
+		} else {
+			el.innerHTML = s.configured
+				? `<span class="dot" style="background:#16a34a"></span>Gemini · ${esc(s.model)}`
+				: `<span class="dot" style="background:#d97706"></span>Offline NLP mode`;
+			el.title = s.configured ? 'Gemini is configured. Personal data is redacted before sending.' : 'Set GEMINI_API_KEY to enable Gemini. The local NLP playbook is used meanwhile.';
+		}
+		$('aiRunText').textContent = ai.overview ? 'Re-run analysis' : (s.configured || !s.enabled) ? 'Analyze errors' : 'Run offline analysis';
 	}
 
 	function renderOverview() {
@@ -163,8 +168,10 @@
 		$('aiRunText').textContent = 'Analyzing…';
 		const errors = LA.summary ? LA.summary.totals.error + LA.summary.totals.fatal : null;
 		$('aiBody').innerHTML = `<div class="ai-loading"><div class="spinner"></div>
-			<div><b>${ai.status && ai.status.configured ? 'Asking Gemini' : 'Running the offline NLP playbook'}</b>
-			<div class="ai-muted">Grouping ${errors != null ? nf.format(errors) + ' ' : ''}errors into patterns, redacting personal data, then analyzing. This usually takes 5–20 seconds.</div></div></div>`;
+			<div><b>${ai.status && ai.status.configured ? 'Asking Gemini' : 'Running NLP analysis'}</b>
+			<div class="ai-muted">${ai.status && ai.status.configured
+				? `Grouping ${errors != null ? nf.format(errors) + ' ' : ''}errors into patterns, redacting personal data, then analyzing. This usually takes 5–20 seconds.`
+				: `Grouping ${errors != null ? nf.format(errors) + ' ' : ''}errors into patterns and matching them against the BFSI failure playbook.`}</div></div></div>`;
 		try {
 			ai.overview = await post(`/api/ai/overview?range=${encodeURIComponent(LA.range)}&force=${force ? 'true' : 'false'}`);
 		} catch (e) {
@@ -233,14 +240,15 @@
 
 		// AI block
 		const configured = ai.status && ai.status.configured;
-		html += `<section class="panel-sec ai-block"><div class="sec-title"><span>AI analysis</span>
-			<button class="btn small ${a ? 'ghost' : 'dark'}" id="aiPanelRun">${a ? 'Re-run' : configured ? '✦ Analyze with Gemini' : '✦ Run offline analysis'}</button></div>`;
+		const nlpOnly = !(ai.status && ai.status.enabled);
+		html += `<section class="panel-sec ai-block"><div class="sec-title"><span>${nlpOnly ? 'Root cause & recovery' : 'AI analysis'}</span>
+			<button class="btn small ${a ? 'ghost' : 'dark'}" id="aiPanelRun">${a ? 'Re-run' : configured ? '✦ Analyze with Gemini' : nlpOnly ? 'Analyze' : '✦ Run offline analysis'}</button></div>`;
 		if (ai.panelLoading) {
-			html += `<div class="ai-loading"><div class="spinner"></div><div><b>${configured ? 'Asking Gemini' : 'Running the offline playbook'}</b><div class="ai-muted">Sending this event with its trace, nearby errors and similar errors (personal data redacted).</div></div></div>`;
+			html += `<div class="ai-loading"><div class="spinner"></div><div><b>${configured ? 'Asking Gemini' : 'Running NLP analysis'}</b><div class="ai-muted">${configured ? 'Sending this event with its trace, nearby errors and similar errors (personal data redacted).' : 'Matching this event and its pattern against the BFSI failure playbook.'}</div></div></div>`;
 		} else if (a) {
 			html += header(a) + body(a, true);
 		} else {
-			html += `<p class="ai-muted">Get a summary, the probable root cause and recovery steps for this event. ${configured ? 'Uses Gemini; personal data is redacted first.' : 'Gemini is not configured, so the local NLP playbook will be used.'}</p>`;
+			html += `<p class="ai-muted">Get a summary, the probable root cause and recovery steps for this event. ${configured ? 'Uses Gemini; personal data is redacted first.' : nlpOnly ? 'Runs on the built-in NLP engine and BFSI failure playbook.' : 'Gemini is not configured, so the local NLP playbook will be used.'}</p>`;
 		}
 		html += `</section>`;
 
@@ -364,7 +372,7 @@
 
 	// boot
 	(async () => {
-		try { ai.status = await LA.api('/api/ai/status'); } catch (e) { ai.status = { configured: false, model: '-' }; }
+		try { ai.status = await LA.api('/api/ai/status'); } catch (e) { ai.status = { enabled: false, configured: false, model: '-' }; }
 		await loadLatestOverview();
 	})();
 

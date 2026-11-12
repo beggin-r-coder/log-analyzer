@@ -75,11 +75,14 @@ public class AiAnalysisService {
 	private final Duration cacheFor;
 	private final Map<String, Object> locks = new ConcurrentHashMap<>();
 	private final int maxCallsPerHour;
+	private final boolean geminiEnabled;
 	private final java.util.Deque<Long> recentCalls = new java.util.ArrayDeque<>();
 
 	public AiAnalysisService(GeminiClient gemini, LogNlpService nlp, PiiRedactor redactor, RecoveryPlaybook playbook,
 			LogRecordRepository logs, AiAnalysisRepository analyses, DashboardService dashboard,
-			@Value("${ai.cache-minutes:30}") int cacheMinutes, @Value("${ai.max-calls-per-hour:60}") int maxCallsPerHour) {
+			@Value("${ai.cache-minutes:30}") int cacheMinutes, @Value("${ai.max-calls-per-hour:60}") int maxCallsPerHour,
+			@Value("${ai.gemini.enabled:false}") boolean geminiEnabled) {
+		this.geminiEnabled = geminiEnabled;
 		this.maxCallsPerHour = maxCallsPerHour;
 		this.gemini = gemini;
 		this.nlp = nlp;
@@ -94,9 +97,10 @@ public class AiAnalysisService {
 	public Map<String, Object> status() {
 		Map<String, Object> s = new LinkedHashMap<>();
 		s.put("provider", "Google Gemini");
-		s.put("configured", gemini.isConfigured());
-		s.put("model", gemini.getModel());
-		s.put("mode", gemini.isConfigured() ? "GEMINI" : "NLP");
+		s.put("enabled", geminiEnabled);
+		s.put("configured", geminiEnabled && gemini.isConfigured());
+		s.put("model", geminiEnabled ? gemini.getModel() : "nlp-playbook");
+		s.put("mode", geminiActive() ? "GEMINI" : "NLP");
 		s.put("redaction", true);
 		s.put("maxCallsPerHour", maxCallsPerHour);
 		return s;
@@ -200,7 +204,7 @@ public class AiAnalysisService {
 
 			Play fallback = playbook.match(target.getMessage() + " " + target.getErrorCategory());
 			AiInsight result = run("LOG", id, null, p.toString(), schema(false), ctx, () -> new AiInsight("LOG", id, null,
-					"NLP", "offline-playbook",
+					"NLP", "nlp-playbook",
 					"%s on %s: \"%s\". This pattern occurred %s times in the last 24 hours.".formatted(target.getLevel(),
 							target.getService(), firstLine(target.getMessage()), ctx.get("occurrences24h")),
 					fallback.rootCause(), fallback.impact(), severityFor(target, fallback), fallback.id().equals("generic") ? 30 : 55,
@@ -340,7 +344,7 @@ public class AiAnalysisService {
 						fmt(toLocal(c.lastSeen()))))
 				.toList();
 		String sev = s.healthScore() < 60 ? "CRITICAL" : s.healthScore() < 75 ? "HIGH" : s.healthScore() < 85 ? "MEDIUM" : "LOW";
-		return new AiInsight("OVERVIEW", null, range.code(), "NLP", "offline-playbook", summary,
+		return new AiInsight("OVERVIEW", null, range.code(), "NLP", "nlp-playbook", summary,
 				errors.isEmpty() ? "None" : main.rootCause(), errors.isEmpty() ? "None" : main.impact(), sev,
 				errors.isEmpty() ? 90 : 50, new ArrayList<>(steps).subList(0, Math.min(7, steps.size())),
 				new ArrayList<>(prevention).subList(0, Math.min(5, prevention.size())), evidence, incidents, null,
@@ -359,7 +363,9 @@ public class AiAnalysisService {
 	private AiInsight run(String scope, Long logId, String range, String prompt, Map<String, Object> schema,
 			Map<String, Object> nlpCtx, Fallback fallback) {
 		AiInsight result;
-		if (!gemini.isConfigured()) {
+		if (!geminiEnabled) {
+			result = fallback.get(); // NLP-only mode: nothing leaves the app
+		} else if (!gemini.isConfigured()) {
 			result = withNote(fallback.get(), "Gemini is not configured (set GEMINI_API_KEY). This is the offline NLP analysis.");
 		} else if (!allowCall()) {
 			result = withNote(fallback.get(), "The Gemini budget of " + maxCallsPerHour
@@ -376,6 +382,10 @@ public class AiAnalysisService {
 		}
 		save(result);
 		return result;
+	}
+
+	private boolean geminiActive() {
+		return geminiEnabled && gemini.isConfigured();
 	}
 
 	/** Sliding one-hour window over paid Gemini calls. */
@@ -448,7 +458,7 @@ public class AiAnalysisService {
 		}
 		AiInsight a = read(rec);
 		// an offline result should not hide a now-configured Gemini
-		if (a == null || ("NLP".equals(a.source()) && gemini.isConfigured())) {
+		if (a == null || ("NLP".equals(a.source()) && geminiActive())) {
 			return null;
 		}
 		return a.asCached();

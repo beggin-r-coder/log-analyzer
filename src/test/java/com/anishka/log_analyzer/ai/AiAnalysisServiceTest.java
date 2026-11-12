@@ -56,6 +56,7 @@ class AiAnalysisServiceTest {
 
 	@DynamicPropertySource
 	static void props(DynamicPropertyRegistry r) {
+		r.add("ai.gemini.enabled", () -> "true");
 		r.add("ai.gemini.api-key", () -> "test-key");
 		r.add("ai.gemini.base-url", () -> "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1beta");
 	}

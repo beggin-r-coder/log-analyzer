@@ -16,15 +16,16 @@ On Windows run `demo.cmd`. Then open http://localhost:8080.
 
 - **Visitors:** click **Explore as guest** (read-only) and follow the 2-minute tour card on the dashboard.
 - **You:** sign in as `admin` / `admin123` (change it with `APP_PASSWORD=... sh demo.sh`).
-- **Gemini:** `GEMINI_API_KEY=your-key sh demo.sh`. Without a key, the offline NLP analysis is used.
+- **Error analysis** runs on the built-in NLP engine (pattern mining plus a BFSI failure playbook); nothing leaves the
+  app. Gemini is switched off by default; see "AI error analysis" below to turn it on.
 
 **Free online demo on Render:** New, then Blueprint, then pick this repository. `render.yaml` sets up a free
-instance in demo mode. Enter an `APP_PASSWORD` for yourself and optionally a `GEMINI_API_KEY`. Free instances sleep
+instance in demo mode. Enter an `APP_PASSWORD` for yourself. Free instances sleep
 after about 15 idle minutes (the first visit then takes about a minute) and regenerate demo data after restarts. The
 settings were tested in a container limited to 512 MB, the free plan's memory.
 
-**What the guest can and cannot do:** browse everything, simulate incidents, run AI analysis (capped at
-`AI_MAX_CALLS_PER_HOUR`, 20 on Render) and export PDFs. Only the admin can pause the live stream for everyone,
+**What the guest can and cannot do:** browse everything, simulate incidents, run the error analysis and export
+PDFs. Only the admin can pause the live stream for everyone,
 store logs from the parser, and open the H2 console.
 
 **5-minute demo script**
@@ -32,8 +33,8 @@ store logs from the parser, and open the H2 console.
 1. Log in as guest; point out the KPIs with change vs the previous period and the live stream.
 2. Tour step 1, **Simulate an incident**: the UPI switch starts failing.
 3. Wait about a minute, then step 2, **Last 15 minutes**: errors spike, the banner appears and health drops.
-4. Step 3, **Analyze errors with AI**: root cause, a recovery checklist and incident cards.
-5. Step 4, **Open one error**: similar errors, the trace, AI analysis and **Copy as ticket**.
+4. Step 3, **Analyze the errors**: NLP groups them into patterns; root cause, a recovery checklist and incident cards.
+5. Step 4, **Open one error**: its pattern and frequency, similar errors, the trace, recovery steps and **Copy as ticket**.
 6. The **Parser** tab: **Load samples**, then **Parse** to show 12 log formats detected automatically.
 7. Step 5, **Export the PDF report**; then open the site on your phone.
 
@@ -96,7 +97,8 @@ health check. The port is taken from `PORT`, which these platforms set automatic
 | Variable | Default | Purpose |
 |---|---|---|
 | `APP_USERNAME` / `APP_PASSWORD` | `admin` / generated | Dashboard login |
-| `GEMINI_API_KEY` | empty | Enables Gemini AI analysis (offline NLP without it) |
+| `AI_ENABLED` | `false` | Use Gemini for the error analysis (NLP-only when false) |
+| `GEMINI_API_KEY` | empty | Gemini key, used only when `AI_ENABLED=true` |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model |
 | `AI_MAX_CALLS_PER_HOUR` | `60` | Cap on paid Gemini calls; beyond it the offline analysis is used |
 | `PORT` | `8080` | HTTP port |
@@ -153,11 +155,15 @@ health check. The port is taken from `PORT`, which these platforms set automatic
 
 ### Setup
 
+Gemini is **off by default** (`AI_ENABLED=false`): the analysis then uses only the local NLP engine and the offline
+playbook, and the UI does not mention AI. To turn Gemini on:
+
 1. Create a key at [Google AI Studio](https://aistudio.google.com/apikey).
-2. Set it as an environment variable (never put it in `application.properties` or commit it):
+2. Set it as an environment variable together with the switch (never put the key in `application.properties` or
+   commit it):
 
 ```bash
-export GEMINI_API_KEY="your-key"
+export AI_ENABLED=true GEMINI_API_KEY="your-key"
 ```
 
 On Windows PowerShell use `$env:GEMINI_API_KEY="your-key"`.

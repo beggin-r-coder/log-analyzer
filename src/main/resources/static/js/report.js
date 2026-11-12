@@ -1,4 +1,4 @@
-/* AI Log Analyzer – multi-page PDF report of the current dashboard (jsPDF + AutoTable).
+/* Log Analyzer – multi-page PDF report of the current dashboard (jsPDF + AutoTable).
  * Charts are re-rendered off-screen at print-specific sizes, so they keep good proportions
  * whatever the browser window looked like. */
 (function () {
@@ -150,7 +150,7 @@
 		const TAGLINE = (window.APP_BRAND && window.APP_BRAND.tagline) || 'BFSI Observability';
 		const { jsPDF } = window.jspdf;
 		const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
-		doc.setProperties({ title: `${BRAND} Observability Report`, subject: 'Log analytics and incident report', author: 'AI Log Analyzer', creator: 'AI Log Analyzer' });
+		doc.setProperties({ title: `${BRAND} Observability Report`, subject: 'Log analytics and incident report', author: 'Log Analyzer', creator: 'Log Analyzer' });
 
 		const generated = Date.now();
 		const rangeLabel = LA.RANGE_LABEL[s.range] || s.range;
@@ -484,7 +484,7 @@
 		doc.setDrawColor(...WHITE); doc.setLineWidth(0.7); doc.setLineCap('round'); doc.setLineJoin('round');
 		doc.lines([[2, 0], [1.5, -4], [2, 8], [1.5, -4], [2, 0]], M + 1.5, 20, [1, 1], 'S', false);
 		doc.setLineCap('butt');
-		text('AI LOG ANALYZER', M + 16, 19, { size: 8, bold: true, color: [165, 180, 252] });
+		text('LOG ANALYZER', M + 16, 19, { size: 8, bold: true, color: [165, 180, 252] });
 		text(`${BRAND} · ${TAGLINE}`, M + 16, 24, { size: 8, color: [148, 163, 184] });
 		text('Generated ' + fmtDT(generated), W - M, 19, { size: 8, color: [148, 163, 184], align: 'right' });
 
@@ -610,7 +610,7 @@
 					const a = window.LA_AI && window.LA_AI.overview;
 					if (!a) break; // nothing analysed yet: leave the section out
 					ensure(60);
-					sectionTitle('AI error analysis', `${a.source === 'GEMINI' ? 'Gemini (' + a.model + ')' : 'Offline NLP playbook'} · severity ${a.severity}${a.confidence != null ? ' · confidence ' + a.confidence + '%' : ''} · generated ${fmtDT(a.generatedAt)}`);
+					sectionTitle(a.source === 'GEMINI' ? 'AI error analysis' : 'Error analysis', `${a.source === 'GEMINI' ? 'Gemini (' + a.model + ')' : 'NLP engine: pattern mining + BFSI playbook'} · severity ${a.severity}${a.confidence != null ? ' · confidence ' + a.confidence + '%' : ''} · generated ${fmtDT(a.generatedAt)}`);
 					const steps = (a.recoverySteps || []).map((x, n) => `${n + 1}. ${x}`).join('\n');
 					const prev = (a.preventiveActions || []).map((x) => '- ' + x).join('\n');
 					table(['Section', 'Analysis'], [['Summary', a.summary || '-'], ['Probable root cause', a.rootCause || '-'], ['Impact', a.impact || '-'],
@@ -719,7 +719,7 @@
 				doc.setDrawColor(...LINE); doc.setLineWidth(0.3); doc.line(0, 15.5, W, 15.5);
 			}
 			doc.setDrawColor(...LINE); doc.setLineWidth(0.3); doc.line(M, H - 11.5, W - M, H - 11.5);
-			text(`Confidential - for internal use only · AI Log Analyzer · ${BRAND}`, M, H - 6.5, { size: 7, color: FAINT });
+			text(`Confidential - for internal use only · Log Analyzer · ${BRAND}`, M, H - 6.5, { size: 7, color: FAINT });
 			text(`Page ${p} of ${pages}`, W - M, H - 6.5, { size: 7.5, bold: true, color: SLATE, align: 'right' });
 		}
 

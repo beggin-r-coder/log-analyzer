@@ -4,7 +4,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>AI Log Analyzer · BFSI Observability</title>
+	<title>Log Analyzer · BFSI Observability</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -108,8 +108,8 @@
 			<ol class="tour-steps">
 				<li><button class="link" data-tour="incident">Simulate an incident</button><span>Breaks the UPI switch for 5 minutes</span></li>
 				<li><button class="link" data-tour="range">Switch to the last 15 minutes</button><span>Watch errors spike and health drop</span></li>
-				<li><button class="link" data-tour="ai">Analyze errors with AI</button><span>Root cause and recovery steps</span></li>
-				<li><button class="link" data-tour="log">Open one error</button><span>Similar errors, trace and AI analysis</span></li>
+				<li><button class="link" data-tour="ai" th:text="${aiEnabled} ? 'Analyze errors with AI' : 'Analyze the errors'">Analyze the errors</button><span>Root cause and recovery steps</span></li>
+				<li><button class="link" data-tour="log">Open one error</button><span th:text="${aiEnabled} ? 'Similar errors, trace and AI analysis' : 'Pattern, similar errors and recovery steps'">Pattern, similar errors and recovery steps</span></li>
 				<li><button class="link" data-tour="pdf">Export the PDF report</button><span>A multi-page summary</span></li>
 			</ol>
 		</section>
@@ -320,8 +320,8 @@
 			<section data-widget="aianalysis" id="ai" class="card span-12" style="animation-delay: .45s">
 				<div class="card-head">
 					<div>
-						<div class="card-title">AI Error Analysis</div>
-						<div class="card-sub">Root cause, impact and recovery guidance for the selected range · errors are grouped by NLP and personal data is redacted before anything is sent</div>
+						<div class="card-title" th:text="${aiEnabled} ? 'AI Error Analysis' : 'Error Analysis'">Error Analysis</div>
+						<div class="card-sub" th:text="${aiEnabled} ? 'Root cause, impact and recovery guidance for the selected range · errors are grouped by NLP and personal data is redacted before anything is sent' : 'Root cause, impact and recovery guidance for the selected range · NLP groups errors into patterns and matches them to a BFSI failure playbook'">Root cause, impact and recovery guidance for the selected range · NLP groups errors into patterns and matches them to a BFSI failure playbook</div>
 					</div>
 					<div class="ai-actions">
 						<span class="chip" id="aiStatus">Checking AI…</span>
@@ -495,7 +495,7 @@
 
 		</div>
 
-		<footer>AI Log Analyzer · Spring Boot + H2<th:block th:if="${h2Console}"> · <a href="/h2-console" target="_blank" rel="noopener">H2 console</a></th:block> · <a href="/parser">Parser playground</a></footer>
+		<footer>Log Analyzer · Spring Boot + H2<th:block th:if="${h2Console}"> · <a href="/h2-console" target="_blank" rel="noopener">H2 console</a></th:block> · <a href="/parser">Parser playground</a></footer>
 	</main>
 
 	<!-- ============ CUSTOMIZE DRAWER ============ -->
@@ -535,7 +535,7 @@
 	<div class="toast" id="toast"></div>
 
 	<script th:src="@{/js/http.js}" src="/js/http.js"></script>
-	<script th:inline="javascript">window.APP_USER = { admin: /*[[${isAdmin}]]*/ true, demo: /*[[${demoMode}]]*/ false };</script>
+	<script th:inline="javascript">window.APP_USER = { admin: /*[[${isAdmin}]]*/ true, demo: /*[[${demoMode}]]*/ false, ai: /*[[${aiEnabled}]]*/ false };</script>
 	<script th:inline="javascript">window.APP_BRAND = { name: /*[[${brandName}]]*/ "NovaBank", tagline: /*[[${brandTagline}]]*/ "BFSI Observability" };</script>
 	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
 	<script th:src="@{/js/ai.js}" src="/js/ai.js"></script>

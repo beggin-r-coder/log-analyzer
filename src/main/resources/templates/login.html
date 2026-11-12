@@ -52,7 +52,7 @@
 
 			<th:block th:if="${demoMode}">
 				<div class="demo-box">
-					<p><b>Live demo.</b> Explore the dashboard, simulate an incident and try the AI analysis with a read-only guest account.</p>
+					<p><b>Live demo.</b> Explore the dashboard, simulate an incident and analyze the errors with a read-only guest account.</p>
 					<form th:action="@{/login}" method="post" action="/login">
 						<input type="hidden" name="username" th:value="${guestName}" value="guest">
 						<input type="hidden" name="password" th:value="${guestPassword}" value="demo">
