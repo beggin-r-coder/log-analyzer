@@ -87,10 +87,51 @@ New, then Blueprint, then pick this repository. `render.yaml` defines the servic
 for the database. Enter `APP_PASSWORD` (and optionally `GEMINI_API_KEY`) when asked. A persistent disk needs a paid
 plan; on the free plan the demo data is regenerated after each restart.
 
-### Railway, Fly.io and others
+### Railway (all in the browser)
 
-Deploy from the `Dockerfile`, attach a volume at `/app/data`, set `APP_PASSWORD`, and use `/actuator/health` as the
-health check. The port is taken from `PORT`, which these platforms set automatically.
+1. Sign in at [railway.com](https://railway.com) with GitHub.
+2. **New Project**, then **Deploy from GitHub repo**, then pick `log-analyzer`. Railway finds `railway.toml` and the
+   `Dockerfile`.
+3. Open the service, then **Settings > Source**, and set the branch to the one with this code (until it is merged
+   into `main`).
+4. **Variables** tab, add:
+
+   | Variable | Value |
+   |---|---|
+   | `DEMO_MODE` | `true` |
+   | `APP_PASSWORD` | a password for yourself |
+   | `SEED_DAYS` | `2` |
+   | `JAVA_OPTS` | `-Xmx256m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError` |
+
+5. **Settings > Networking > Generate Domain**. Open the `...up.railway.app` link and click **Explore as guest**.
+
+Railway sets `PORT` itself. Without a volume, demo data is regenerated after each redeploy, which is fine for a demo.
+
+### Fly.io (needs the `fly` command-line tool)
+
+Install `flyctl` from [fly.io/docs/flyctl/install](https://fly.io/docs/flyctl/install/), then in the project folder:
+
+```bash
+fly launch --copy-config --no-deploy
+```
+
+Accept the suggested unique app name; it is written into `fly.toml`.
+
+```bash
+fly secrets set APP_PASSWORD=your-password
+```
+
+```bash
+fly deploy --ha=false
+```
+
+`--ha=false` keeps a single machine, which this app needs (the H2 database and logins live on one instance). The app
+sleeps when idle and wakes on the next visit (a few seconds' delay). Open `https://<your-app>.fly.dev`.
+
+### Other hosts
+
+Deploy from the `Dockerfile`, set `APP_PASSWORD` (and `DEMO_MODE=true` for a demo), run a single instance, use
+`/actuator/health` as the health check, and optionally attach a volume at `/app/data`. The port is read from `PORT`.
 
 ### Configuration
 
