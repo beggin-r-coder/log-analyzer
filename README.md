@@ -38,6 +38,23 @@ store logs from the parser, and open the H2 console.
 6. The **Parser** tab: **Load samples**, then **Parse** to show 12 log formats detected automatically.
 7. Step 5, **Export the PDF report**; then open the site on your phone.
 
+## Browser-only demo (GitHub Pages)
+
+`docs/` holds a copy of the dashboard that runs entirely in the browser, for networks where app hosts are blocked.
+It uses the real pages, CSS and JavaScript; `docs/js/demo-backend.js` answers the API calls in the browser with a port
+of the backend (log generator, universal parser, classifier, dashboard aggregations, search, NLP analysis), using
+data exported from the Java classes. Charts and PDF libraries are bundled, so it works without CDNs. Data is
+simulated per browser tab; nothing is sent anywhere.
+
+**Publish:** Settings, then Pages, then "Deploy from a branch", then pick the branch and the `/docs` folder, then Save.
+The site appears at `https://<user>.github.io/log-analyzer/`.
+
+**Rebuild after changing the app:**
+
+```bash
+python3 scripts/static-demo/build.py
+```
+
 ## Run locally
 
 ```bash

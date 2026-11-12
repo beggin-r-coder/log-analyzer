@@ -48,8 +48,9 @@
 	}
 
 	async function ensureLibs() {
-		if (!(window.jspdf && window.jspdf.jsPDF)) await loadScript(LIBS[0]);
-		if (!window.jspdf.jsPDF.API.autoTable) await loadScript(LIBS[1]);
+		const libs = window.APP_PDF_LIBS || LIBS; // the static demo serves its own copies
+		if (!(window.jspdf && window.jspdf.jsPDF)) await loadScript(libs[0]);
+		if (!window.jspdf.jsPDF.API.autoTable) await loadScript(libs[1]);
 	}
 
 	function overlay(show, text) {
