@@ -1095,6 +1095,11 @@
 	function addToFeed(records, live) {
 		const incoming = records.filter((r) => !feed.ids.has(r.id)).sort((a, b) => a.id - b.id);
 		if (!incoming.length) return;
+		if (live && window.LA_PRESENTING) { // presentation mode covers the page: store now, draw on exit
+			incoming.forEach((r) => { feed.ids.add(r.id); feed.items.unshift(r); });
+			trimFeed();
+			return;
+		}
 		const reading = $('feed').scrollTop > 40;
 		if (live && (feed.paused || reading)) {
 			incoming.forEach((r) => { feed.ids.add(r.id); feed.buffer.push(r); });
@@ -1229,6 +1234,7 @@
 		});
 		$('feed').addEventListener('scroll', () => { if ($('feed').scrollTop <= 40 && feed.buffer.length && !feed.paused) flushBuffer(); });
 		setInterval(() => {
+			if (document.hidden || window.LA_PRESENTING) return;
 			document.querySelectorAll('.feed-ago').forEach((el) => { el.textContent = agoShort(Number(el.dataset.ts)); });
 			const cutoff = Date.now() - 60000;
 			const perMin = feed.items.filter((r) => r.timestamp >= cutoff).length + feed.buffer.filter((r) => r.timestamp >= cutoff).length;
@@ -1295,7 +1301,7 @@
 	window.LA = {
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
 		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange, filterExplorer, esc, agoShort, ago,
-		RANGE_LABEL, delta, nf, showWidget: (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); widgetEl(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+		RANGE_LABEL, delta, nf, refreshAll: () => { refreshDashboard(); refreshLogs(); renderFeed(); }, showWidget: (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); widgetEl(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); },
 		isVisible: (id) => !layout.hidden.has(id), charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
 	};
 
@@ -1343,7 +1349,7 @@
 	})();
 
 	setInterval(() => {
-		if (document.hidden) return;
+		if (document.hidden || window.LA_PRESENTING) return;
 		refreshDashboard();
 		const e = state.explorer;
 		if ($('tailToggle').checked && e.page === 0 && e.sort === 'timestamp' && e.dir === 'desc') {

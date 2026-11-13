@@ -446,6 +446,7 @@
 		document.addEventListener('la:range', () => { refreshImpact(); refreshIncidents(); });
 		let pending;
 		document.addEventListener('la:incident', (ev) => {
+			if (window.LA_PRESENTING) return; // refreshed when the presentation closes
 			const i = ev.detail;
 			if (i && i.change === 'opened') {
 				LA.toast(`New ${i.severity} incident ${incId(i)}: ${i.title} · paged ${i.owner}`);
@@ -463,8 +464,8 @@
 
 		refreshImpact();
 		refreshIncidents();
-		setInterval(() => { if (!document.hidden) { refreshIncidents(); } }, POLL_MS);
-		setInterval(() => { if (!document.hidden) { refreshImpact(); } }, POLL_MS * 3);
+		setInterval(() => { if (!document.hidden && !window.LA_PRESENTING) { refreshIncidents(); } }, POLL_MS);
+		setInterval(() => { if (!document.hidden && !window.LA_PRESENTING) { refreshImpact(); } }, POLL_MS * 3);
 	}
 
 	// shared with report.js (PDF export)

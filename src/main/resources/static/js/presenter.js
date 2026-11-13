@@ -104,41 +104,69 @@
 		W.packets.push({ from, to: n, t0: now, dur: 900 + Math.random() * 700, err: q.err });
 	}
 
+	// Glow sprites, rendered once per colour: far cheaper than a radial gradient per node per frame.
+	const SPRITES = {};
+	function sprite(key, col) {
+		if (SPRITES[key]) return SPRITES[key];
+		const c = document.createElement('canvas'), n = 128;
+		c.width = c.height = n;
+		const g = c.getContext('2d'), gr = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+		gr.addColorStop(0, rgba(col, .55)); gr.addColorStop(.35, rgba(col, .18)); gr.addColorStop(1, rgba(col, 0));
+		g.fillStyle = gr; g.fillRect(0, 0, n, n);
+		return (SPRITES[key] = c);
+	}
+	const PACKET_COLORS = { err: COLOR.crit, warn: COLOR.warn, ok: [143, 220, 255] };
+	const TRAIL = [0, .03, .06]; // trail offsets along the path, newest first
+
 	function drawWorld(ctx, w, h, now, dt) {
-		const k = Math.min(1, dt / 420);
 		const c = W.cam;
+		const k = 1 - Math.exp(-dt / 320); // frame-rate independent easing
 		for (const key of Object.keys(W.to)) c[key] += (W.to[key] - c[key]) * k;
+		const wall0 = Date.now();
+		if (c.a < .01) {
+			if (!W.blank) { ctx.clearRect(0, 0, w, h); W.blank = true; }
+			// map hidden: still count each event against its service, just don't draw it
+			for (const p of W.packets) { p.to.events.push(wall0); if (p.err) p.to.errors.push(wall0); }
+			W.packets.length = 0;
+			while (W.queue.length && W.queue[0].at <= now) { const q = W.queue.shift(); q.n.events.push(wall0); if (q.err) q.n.errors.push(wall0); }
+			return;
+		}
+		W.blank = false;
 		ctx.clearRect(0, 0, w, h);
-		if (c.a < .01) return;
-		ctx.save();
 		ctx.globalAlpha = c.a;
 		const boxW = Math.min(w * .82, h * 1.75), boxH = Math.min(h * .56, boxW * .52);
 		const narrow = w < 700; // phones: map below the text, centred
 		const ox = narrow ? .5 : c.ox, oy = narrow ? Math.min(.8, c.oy + .2) : c.oy;
-		const P2 = (p) => [ox * w + (p.x - c.fx) * boxW * c.s, oy * h + (p.y - c.fy) * boxH * c.s];
+		const sx = boxW * c.s, sy = boxH * c.s, bx = ox * w - c.fx * sx, by = oy * h - c.fy * sy;
+		for (const n of NODES) { n.sx = bx + n.x * sx; n.sy = by + n.y * sy; }
 		const unit = Math.max(.7, Math.min(1.4, boxW / 1100)) * Math.sqrt(c.s);
 		const wall = Date.now();
 
-		// edges
+		// edges: two batched paths instead of one gradient per edge
+		ctx.lineWidth = 1.2 * unit;
+		ctx.strokeStyle = 'rgba(120,150,255,.16)';
+		ctx.beginPath();
+		const hot = [];
 		for (const e of edges) {
-			const [x1, y1] = P2(e.a), [x2, y2] = P2(e.b);
-			const hot = W.incident && (e.a.id === W.incident || e.b.id === W.incident);
-			const g = ctx.createLinearGradient(x1, y1, x2, y2);
-			g.addColorStop(0, hot ? 'rgba(255,77,94,.35)' : 'rgba(139,156,255,.10)');
-			g.addColorStop(1, hot ? 'rgba(255,77,94,.12)' : 'rgba(90,209,255,.18)');
-			ctx.strokeStyle = g;
-			ctx.lineWidth = (hot ? 1.8 : 1.2) * unit;
-			if (hot) { ctx.setLineDash([6 * unit, 7 * unit]); ctx.lineDashOffset = -now / 30; } else ctx.setLineDash([]);
-			ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+			if (W.incident && (e.a.id === W.incident || e.b.id === W.incident)) { hot.push(e); continue; }
+			ctx.moveTo(e.a.sx, e.a.sy); ctx.lineTo(e.b.sx, e.b.sy);
 		}
-		ctx.setLineDash([]);
+		ctx.stroke();
+		if (hot.length) {
+			ctx.strokeStyle = 'rgba(255,77,94,.4)';
+			ctx.lineWidth = 1.8 * unit;
+			ctx.setLineDash([6 * unit, 7 * unit]); ctx.lineDashOffset = -now / 30;
+			ctx.beginPath();
+			for (const e of hot) { ctx.moveTo(e.a.sx, e.a.sy); ctx.lineTo(e.b.sx, e.b.sy); }
+			ctx.stroke();
+			ctx.setLineDash([]);
+		}
 
-		// spawn queued packets
+		// packets: advance, then draw batched by colour and trail step
 		while (W.queue.length && W.queue[0].at <= now) spawn(W.queue.shift(), now);
-		if (W.queue.length > 400) W.queue.splice(0, W.queue.length - 400);
-
-		// packets with short trails
-		const alive = [];
+		if (W.queue.length > 300) W.queue.splice(0, W.queue.length - 300);
+		const batches = { err: [], warn: [], ok: [] };
+		let keep = 0;
 		for (const p of W.packets) {
 			const t = (now - p.t0) / p.dur;
 			if (t >= 1) {
@@ -146,42 +174,47 @@
 				if (p.err) { p.to.errHit = now; p.to.errors.push(wall); }
 				continue;
 			}
-			alive.push(p);
+			W.packets[keep++] = p;
 			const e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-			const [x1, y1] = P2(p.from), [x2, y2] = P2(p.to);
-			const col = p.err ? COLOR.crit : (W.incident && p.to.id === W.incident ? COLOR.warn : [143, 220, 255]);
-			for (let s = 4; s >= 0; s--) {
-				const ee = Math.max(0, e - s * .025);
-				const x = x1 + (x2 - x1) * ee, y = y1 + (y2 - y1) * ee;
-				ctx.fillStyle = rgba(col, (1 - s / 5) * (p.from.ghost ? Math.min(1, t * 3) : 1) * .9);
-				ctx.beginPath(); ctx.arc(x, y, (p.err ? 2.8 : 2.1) * unit * (1 - s * .12), 0, Math.PI * 2); ctx.fill();
-			}
+			const x1 = p.from.ghost ? bx + p.from.x * sx : p.from.sx, y1 = p.from.ghost ? by + p.from.y * sy : p.from.sy;
+			batches[p.err ? 'err' : (W.incident && p.to.id === W.incident ? 'warn' : 'ok')].push([x1, y1, p.to.sx - x1, p.to.sy - y1, e, p.err]);
 		}
-		W.packets = alive.slice(-300);
+		W.packets.length = keep;
+		if (keep > 220) W.packets.splice(0, keep - 220);
+		for (const key of ['ok', 'warn', 'err']) {
+			const list = batches[key];
+			if (!list.length) continue;
+			TRAIL.forEach((off, s) => {
+				ctx.fillStyle = rgba(PACKET_COLORS[key], s === 0 ? .95 : s === 1 ? .5 : .22);
+				ctx.beginPath();
+				for (const [x1, y1, dx, dy, e, err] of list) {
+					const ee = Math.max(0, e - off), r = (err ? 2.8 : 2.1) * unit * (1 - s * .18);
+					const x = x1 + dx * ee, y = y1 + dy * ee;
+					ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2);
+				}
+				ctx.fill();
+			});
+		}
 
 		// nodes
-		ctx.textAlign = 'center';
 		for (const n of NODES) {
-			const [x, y] = P2(n);
+			const x = n.sx, y = n.sy;
 			const st = nodeState(n, wall), col = COLOR[st];
+			n.st = st;
 			const r = 15 * n.r * unit;
 			const hit = Math.max(0, 1 - (now - n.hit) / 700), eh = Math.max(0, 1 - (now - n.errHit) / 900);
-			// halo
-			const halo = ctx.createRadialGradient(x, y, r * .4, x, y, r * (3.2 + hit * 1.2));
-			halo.addColorStop(0, rgba(col, .22 + hit * .18 + (st === 'crit' ? .2 : 0)));
-			halo.addColorStop(1, rgba(col, 0));
-			ctx.fillStyle = halo;
-			ctx.beginPath(); ctx.arc(x, y, r * (3.2 + hit * 1.2), 0, Math.PI * 2); ctx.fill();
-			// critical shockwaves
+			const hr = r * (3.4 + hit * 1.1);
+			ctx.globalAlpha = c.a * Math.min(1, .55 + hit * .45 + (st === 'crit' ? .35 : 0));
+			ctx.drawImage(sprite(st, col), x - hr, y - hr, hr * 2, hr * 2);
+			ctx.globalAlpha = c.a;
 			if (st === 'crit') {
+				ctx.lineWidth = 2 * unit;
 				for (let i = 0; i < 3; i++) {
 					const ph = ((now / 1600) + i / 3) % 1;
 					ctx.strokeStyle = rgba(col, (1 - ph) * .55);
-					ctx.lineWidth = 2 * unit;
 					ctx.beginPath(); ctx.arc(x, y, r * (1.2 + ph * 3.4), 0, Math.PI * 2); ctx.stroke();
 				}
 			}
-			// heal ripple
 			if (W.healAt && n.id === FOCUS) {
 				const ph = (now - W.healAt) / 1800;
 				if (ph < 1) {
@@ -190,7 +223,6 @@
 					ctx.beginPath(); ctx.arc(x, y, r * (1.2 + ph * 6), 0, Math.PI * 2); ctx.stroke();
 				}
 			}
-			// body
 			ctx.fillStyle = '#0a0e1a';
 			ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
 			ctx.lineWidth = (2 + hit * 1.5) * unit;
@@ -198,36 +230,60 @@
 			ctx.stroke();
 			ctx.fillStyle = rgba(col, .9);
 			ctx.beginPath(); ctx.arc(x, y, r * (.32 + hit * .12), 0, Math.PI * 2); ctx.fill();
-			// labels
-			ctx.font = `600 ${Math.round(12.5 * unit)}px Inter, system-ui, sans-serif`;
-			ctx.fillStyle = st === 'crit' ? '#ffb3ba' : 'rgba(238,240,247,.86)';
-			ctx.fillText(n.label, x, y + r + 18 * unit);
-			ctx.font = `500 ${Math.round(11 * unit)}px Inter, system-ui, sans-serif`;
-			ctx.fillStyle = st === 'crit' ? 'rgba(255,140,150,.9)' : 'rgba(154,163,184,.75)';
-			const em = n.events.length, er = n.errors.length;
-			ctx.fillText(st === 'crit' ? `${er} errors / min` : `${em} / min${er ? ' · ' + er + ' err' : ''}`, x, y + r + 33 * unit);
 		}
-		ctx.restore();
+		// labels: one font switch per pass
+		ctx.textAlign = 'center';
+		ctx.font = `600 ${Math.round(12.5 * unit)}px Inter, system-ui, sans-serif`;
+		for (const n of NODES) {
+			ctx.fillStyle = n.st === 'crit' ? '#ffb3ba' : 'rgba(238,240,247,.86)';
+			ctx.fillText(n.label, n.sx, n.sy + 15 * n.r * unit + 18 * unit);
+		}
+		ctx.font = `500 ${Math.round(11 * unit)}px Inter, system-ui, sans-serif`;
+		for (const n of NODES) {
+			const em = n.events.length, er = n.errors.length;
+			ctx.fillStyle = n.st === 'crit' ? 'rgba(255,140,150,.9)' : 'rgba(154,163,184,.75)';
+			ctx.fillText(n.st === 'crit' ? `${er} errors / min` : `${em} / min${er ? ' · ' + er + ' err' : ''}`, n.sx, n.sy + 15 * n.r * unit + 33 * unit);
+		}
+		ctx.globalAlpha = 1;
 	}
 
 	// =====================================================================
 	// AMBIENT BACKGROUND
 	// =====================================================================
-	const dots = Array.from({ length: 110 }, () => ({ x: Math.random(), y: Math.random(), z: .2 + Math.random() * .8, vx: (Math.random() - .5) * .00004, vy: -.00002 - Math.random() * .00005 }));
+	const dots = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), z: .25 + Math.random() * .75, vx: (Math.random() - .5) * .00004, vy: -.00002 - Math.random() * .00005 }));
+	const LINK = 16000;
 	function drawAmbient(ctx, w, h, dt) {
 		ctx.clearRect(0, 0, w, h);
-		const pts = dots.map((d) => {
+		const px = new Float32Array(dots.length * 2);
+		dots.forEach((d, i) => {
 			d.x = (d.x + d.vx * dt + 1) % 1; d.y = (d.y + d.vy * dt * d.z + 1) % 1;
-			return [d.x * w, d.y * h, d.z];
+			px[i * 2] = d.x * w; px[i * 2 + 1] = d.y * h;
 		});
-		ctx.lineWidth = 1;
-		for (let i = 0; i < pts.length; i++) {
-			for (let j = i + 1; j < pts.length; j++) {
-				const dx = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1], d2 = dx * dx + dy * dy;
-				if (d2 < 15000) { ctx.strokeStyle = `rgba(139,156,255,${(1 - d2 / 15000) * .07})`; ctx.beginPath(); ctx.moveTo(pts[i][0], pts[i][1]); ctx.lineTo(pts[j][0], pts[j][1]); ctx.stroke(); }
+		// links in three opacity bands, one stroke each
+		const bands = [[], [], []];
+		for (let i = 0; i < dots.length; i++) {
+			const xi = px[i * 2], yi = px[i * 2 + 1];
+			for (let j = i + 1; j < dots.length; j++) {
+				const dx = xi - px[j * 2], dy = yi - px[j * 2 + 1], d2 = dx * dx + dy * dy;
+				if (d2 < LINK) bands[d2 < LINK * .33 ? 0 : d2 < LINK * .66 ? 1 : 2].push(i, j);
 			}
 		}
-		for (const [x, y, z] of pts) { ctx.fillStyle = `rgba(200,212,255,${z * .45})`; ctx.beginPath(); ctx.arc(x, y, z * 1.4, 0, Math.PI * 2); ctx.fill(); }
+		ctx.lineWidth = 1;
+		[.07, .045, .02].forEach((a, b) => {
+			const l = bands[b];
+			if (!l.length) return;
+			ctx.strokeStyle = `rgba(139,156,255,${a})`;
+			ctx.beginPath();
+			for (let k = 0; k < l.length; k += 2) { ctx.moveTo(px[l[k] * 2], px[l[k] * 2 + 1]); ctx.lineTo(px[l[k + 1] * 2], px[l[k + 1] * 2 + 1]); }
+			ctx.stroke();
+		});
+		// dots in three depth bands
+		[[.25, .5], [.5, .75], [.75, 1.01]].forEach(([lo, hi]) => {
+			ctx.fillStyle = `rgba(200,212,255,${hi * .42})`;
+			ctx.beginPath();
+			dots.forEach((d, i) => { if (d.z >= lo && d.z < hi) { const r = d.z * 1.4; ctx.moveTo(px[i * 2] + r, px[i * 2 + 1]); ctx.arc(px[i * 2], px[i * 2 + 1], r, 0, Math.PI * 2); } });
+			ctx.fill();
+		});
 	}
 
 	// =====================================================================
@@ -245,7 +301,8 @@
 			if (!el.isConnected) return;
 			const p = Math.min(1, Math.max(0, (t - start) / ms));
 			const e = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
-			el.textContent = fmt(to * e);
+			const txt = fmt(to * e);
+			if (txt !== el.textContent) el.textContent = txt;
 			if (p < 1) requestAnimationFrame(tick);
 		};
 		el.textContent = fmt(0);
@@ -435,7 +492,7 @@
 				const m = el.querySelector('[data-money]');
 				countUp(m, Number(m.dataset.money), 2600, (v) => inr(v), 300);
 				el.querySelectorAll('[data-count]').forEach((n, k) => countUp(n, Number(n.dataset.count), 1800, (v) => nfmt.format(Math.round(v)) + (n.dataset.suffix || ''), 500 + k * 150));
-				setTimeout(() => { const b = el.querySelector('[data-burn]'); if (b) b.style.width = b.dataset.burn + '%'; }, 50);
+				setTimeout(() => { const b = el.querySelector('[data-burn]'); if (b) b.style.transform = `scaleX(${b.dataset.burn / 100})`; }, 50);
 			}
 		},
 		{
@@ -514,7 +571,7 @@
 					const s = el.querySelector(`[data-s="${k}"]`);
 					if (!s) return;
 					s.classList.add('on'); s.querySelector('i').textContent = '✓'; s.querySelector('small').textContent = text || '';
-					$('pmFill').style.width = (k / 3 * 75) + '%';
+					$('pmFill').style.transform = `scaleX(${k / 3})`;
 				};
 				const inc = P.data.incident;
 				if (!inc) { $('pmResTitle').textContent = 'No incident to resolve'; return; }
@@ -541,7 +598,7 @@
 					step(1, det && det.acknowledgedAt ? clock(det.acknowledgedAt) + ' · ' + det.acknowledgedBy : '');
 					step(2, P.data.diagnosedAt ? clock(P.data.diagnosedAt) + ' · NLP' : 'NLP playbook');
 					step(3, det && det.resolvedAt ? clock(det.resolvedAt) + ' · ' + det.resolvedBy : '');
-					$('pmFill').style.width = '75%';
+					$('pmFill').style.transform = 'scaleX(1)';
 					el.querySelector('#pmResolve').classList.add('done');
 					$('pmResTitle').innerHTML = '<span class="grad-green">UPI payments restored</span>';
 					if (det) {
@@ -592,7 +649,8 @@
 
 	function rainLines() {
 		let src = P.data.logs || [];
-		while (src.length && src.length < 40) src = src.concat(src);
+		while (src.length && src.length < 30) src = src.concat(src);
+		src = src.slice(0, 45);
 		const lines = src.map((r) => {
 			const cls = r.level === 'ERROR' || r.level === 'FATAL' ? 'e' : r.level === 'WARN' ? 'wn' : '';
 			return `<div class="${cls}"><b>${esc(r.service)}</b>${esc((r.rawLine || r.message || '').split('\n')[0].slice(0, 160))}</div>`;
@@ -630,7 +688,7 @@
 		el.setAttribute('aria-label', 'Presentation');
 		el.innerHTML = `
 			<canvas class="pm-ambient"></canvas><canvas class="pm-world"></canvas>
-			<div class="pm-flash"></div><div class="pm-grain"></div>
+			<div class="pm-flash"></div>
 			<div class="pm-top">
 				<div class="pm-brand"><svg viewBox="0 0 84 84"><rect x="1" y="1" width="82" height="82" rx="22" fill="rgba(139,156,255,.14)" stroke="rgba(139,156,255,.5)"/><path d="M14 44h12l6-16 10 30 8-22 4 8h16" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>Log Analyzer<span>${esc(BRAND)}</span></div>
 				<div class="pm-chapter"><b id="pmNum">01</b><span class="pm-chap" id="pmChap">Welcome</span></div>
@@ -669,51 +727,52 @@
 		});
 		P.el = el;
 		P.ctxA = el.querySelector('.pm-ambient').getContext('2d');
-		P.ctxW = el.querySelector('.pm-world').getContext('2d');
+		P.ctxW = el.querySelector('.pm-world').getContext('2d', { desynchronized: true });
+		P.clockEl = el.querySelector('#pmClock');
 	}
 
 	function resize() {
-		const dpr = Math.min(2, window.devicePixelRatio || 1);
-		for (const c of P.el.querySelectorAll('canvas')) {
-			c.width = Math.round(innerWidth * dpr); c.height = Math.round(innerHeight * dpr);
-			c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
-		}
+		const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+		const set = (c, ratio) => {
+			c.width = Math.round(innerWidth * ratio); c.height = Math.round(innerHeight * ratio);
+			c.getContext('2d').setTransform(ratio, 0, 0, ratio, 0, 0);
+		};
+		set(P.el.querySelector('.pm-world'), dpr);
+		set(P.el.querySelector('.pm-ambient'), 1); // soft dots: full resolution is wasted here
 	}
 
 	function frame(t) {
 		if (!P.open) return;
-		const dt = Math.min(64, t - (P.last || t));
+		const dt = Math.min(50, t - (P.last || t));
 		P.last = t;
 		const scene = SCENES[P.idx];
 		drawAmbient(P.ctxA, innerWidth, innerHeight, dt);
-		P.el.querySelector('.pm-ambient').style.opacity = scene.ambient;
 		drawWorld(P.ctxW, innerWidth, innerHeight, t, dt);
-		// progress & auto-advance
+		// progress & auto-advance (transform only, no layout)
 		if (P.autoplay) P.elapsed += dt;
 		const dur = scene.dur;
 		const ready = !scene.ready || scene.ready();
 		let pct = dur === Infinity ? 0 : Math.min(1, P.elapsed / dur);
 		if (!ready) pct = Math.min(pct, .92);
-		const fill = P.el.querySelector('.pm-seg.cur i');
-		if (fill) fill.style.width = (pct * 100) + '%';
+		if (P.fill) P.fill.style.transform = `scaleX(${pct.toFixed(4)})`;
 		if (P.autoplay && dur !== Infinity && ((P.elapsed >= dur && ready) || P.elapsed >= (scene.maxDur || Infinity))) {
 			if (scene.id === 'incident' && ready && P.elapsed < dur + 1200 && !P.holdOnce) { P.holdOnce = true; } // tiny beat after detection
 			else go(P.idx + 1);
 		}
-		// clock & live numbers
-		const sec = Math.floor((Date.now() - P.startedAt) / 1000);
-		$('pmClock').textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+		// text updates a few times a second, only when they change
 		if (!P.liveTick || t - P.liveTick > 300) {
 			P.liveTick = t;
+			const sec = Math.floor((Date.now() - P.startedAt) / 1000);
+			setText(P.clockEl, Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'));
 			const now = Date.now();
-			const rate = NODES.reduce((a, n) => a + n.events.filter((x) => x > now - 60000).length, 0);
-			const r = P.el.querySelector('[data-live="rate"]');
-			if (r) r.textContent = rate ? nfmt.format(rate) : '…';
-			const u = P.el.querySelector('[data-live="upiErr"]');
-			if (u) u.textContent = byId[FOCUS].errors.filter((x) => x > now - 60000).length;
+			let rate = 0;
+			for (const n of NODES) for (let k = n.events.length - 1; k >= 0 && n.events[k] > now - 60000; k--) rate++;
+			setText(P.el.querySelector('[data-live="rate"]'), rate ? nfmt.format(rate) : '…');
+			setText(P.el.querySelector('[data-live="upiErr"]'), String(byId[FOCUS].errors.filter((x) => x > now - 60000).length));
 		}
 		P.raf = requestAnimationFrame(frame);
 	}
+	function setText(el, v) { if (el && el.textContent !== v) el.textContent = v; }
 
 	async function go(i) {
 		i = Math.max(0, Math.min(SCENES.length - 1, i));
@@ -726,7 +785,9 @@
 		// chrome
 		$('pmNum').textContent = String(i + 1).padStart(2, '0');
 		const chap = $('pmChap'); chap.textContent = scene.chapter; chap.style.animation = 'none'; void chap.offsetWidth; chap.style.animation = '';
-		P.el.querySelectorAll('.pm-seg').forEach((s, k) => { s.classList.toggle('done', k < i); s.classList.toggle('cur', k === i); s.querySelector('i').style.width = k < i ? '100%' : '0'; });
+		P.el.querySelectorAll('.pm-seg').forEach((s, k) => { s.classList.toggle('done', k < i); s.classList.toggle('cur', k === i); s.querySelector('i').style.transform = k < i ? 'scaleX(1)' : 'scaleX(0)'; });
+		P.fill = P.el.querySelector('.pm-seg.cur i');
+		P.el.querySelector('.pm-ambient').style.opacity = scene.ambient;
 		camera(CAM[scene.cam]);
 		const outage = ['incident', 'detect', 'impact', 'diagnose'].includes(scene.id);
 		const unresolved = P.data.incident && !(P.data.detail && P.data.detail.status === 'RESOLVED');
@@ -741,10 +802,23 @@
 		el.className = 'pm-scene';
 		el.innerHTML = scene.html();
 		stage.appendChild(el);
+		alignGradients(el);
 		requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
 		const cap = $('pmCaption');
 		cap.innerHTML = `<p>${esc(scene.caption())}</p>`;
 		if (scene.enter) { try { await scene.enter(el, alive); } catch (e) { /* keep presenting */ } }
+	}
+
+	/** Each animated word paints its own slice of one continuous gradient across the whole phrase. */
+	function alignGradients(root) {
+		root.querySelectorAll('.grad, .grad-green, .grad-red').forEach((g) => {
+			const gr = g.getBoundingClientRect();
+			g.querySelectorAll('.w').forEach((w) => {
+				const r = w.getBoundingClientRect();
+				w.style.backgroundSize = `${gr.width}px 100%`;
+				w.style.backgroundPosition = `${gr.left - r.left}px 0`; // the gradient is horizontal: only x matters
+			});
+		});
 	}
 
 	async function loadBase() {
@@ -776,6 +850,7 @@
 		if (P.open) return;
 		if (!P.el) build();
 		P.open = true;
+		window.LA_PRESENTING = true;
 		P.startedAt = Date.now();
 		P.last = 0;
 		document.body.classList.add('pm-open');
@@ -806,6 +881,8 @@
 		if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 		setTimeout(() => { if (!P.open) $('pmStage').innerHTML = ''; }, 650);
 		if (location.hash === '#present') history.replaceState(null, '', location.pathname + location.search);
+		window.LA_PRESENTING = false;
+		if (LA.refreshAll) LA.refreshAll();
 		document.dispatchEvent(new CustomEvent('la:range')); // refresh the dashboard with what happened
 	}
 
