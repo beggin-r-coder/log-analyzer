@@ -40,22 +40,23 @@ store logs from the parser, and open the H2 console.
 
 ## Presentation mode
 
-Click **Present** in the top bar (or press **P**) for a full-screen, guided 2-minute story that runs on the live
-system rather than slides:
+Click **Present** in the top bar (or press **P**) for a full-screen, guided 2-minute story built for pitches and
+hackathons. It uses scripted, realistic figures for a large retail bank at peak hour, so it looks the same every time
+and never touches the real data or the incident list:
 
-1. **Welcome** and **The problem**: live counters and real log lines from the store.
-2. **Live system**: an animated service map; every moving dot is a real log event arriving over Server-Sent Events.
-3. **Incident**: a real UPI switch outage is injected, the node turns red and NPCI errors stream in.
-4. **Detection**: the alert rules open a real incident and page the on-call team, which acknowledges it.
-5. **Business impact**: money at risk, failed transactions, customers affected and SLA budget burn for that incident.
-6. **Diagnosis**: the NLP engine shows the error pattern, similar errors, root cause and recovery steps.
-7. **Resolution**: the outage is stopped and the incident resolved, with the timeline and its MTTA / MTTR.
+1. **Welcome** and **The problem**: 42.7 million log lines a day, with a scanning beam over a wall of mixed-format logs.
+2. **Live system**: an animated service map with transactions flowing between 12 services.
+3. **Incident**: the UPI switch fails; an 8× time-lapse clock, a climbing error counter, a failure-rate gauge and
+   NPCI errors streaming in.
+4. **Detection**: detected in 38 seconds; INC-2481 opens and the on-call engineer is paged and acknowledges.
+5. **Business impact**: ₹2.66 Cr of payments at risk, 14,382 failed transactions, the monthly SLA budget burning.
+6. **Diagnosis**: errors collapse into one pattern, linked to a firewall change three minutes earlier, with a recovery plan.
+7. **Resolution**: the timeline fills in and recovery time is compared with the previous 47-minute average.
 8. **Why it matters** and **Thank you**.
 
 It plays on its own with narration captions. Use `←` `→` to move, `Space` to pause, `N` for captions, `F` for full
-screen and `Esc` to exit. You can also open it straight away with `#present` at the end of the dashboard address.
-It works in the GitHub Pages demo too. The incident it creates is a real (simulated) one, so it appears in the
-incident list afterwards.
+screen and `Esc` to exit. Add `#present` to the dashboard address to open it straight away. It works in the GitHub
+Pages demo too.
 
 ## Browser-only demo (GitHub Pages)
 
