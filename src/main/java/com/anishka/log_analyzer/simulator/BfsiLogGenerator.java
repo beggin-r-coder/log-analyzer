@@ -84,7 +84,16 @@ public class BfsiLogGenerator {
 	 * @param incidentService service currently suffering an incident (or null)
 	 */
 	public GeneratedLog next(LocalDateTime ts, Random rnd, String incidentService) {
-		Profile p = pickProfile(rnd, incidentService);
+		return build(pickProfile(rnd, incidentService), ts, rnd, incidentService);
+	}
+
+	/** One event from a specific service that is in an incident (used to replay an outage instantly). */
+	public GeneratedLog nextIncidentEvent(LocalDateTime ts, Random rnd, String service) {
+		Profile p = profiles.stream().filter(x -> x.name().equals(service)).findFirst().orElse(profiles.get(0));
+		return build(p, ts, rnd, p.name());
+	}
+
+	private GeneratedLog build(Profile p, LocalDateTime ts, Random rnd, String incidentService) {
 		boolean inIncident = p.name().equals(incidentService);
 
 		String level;

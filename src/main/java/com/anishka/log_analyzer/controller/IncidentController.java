@@ -44,6 +44,13 @@ public class IncidentController {
 		return incidents.list(status, range);
 	}
 
+	/** Runs the alert rules now instead of waiting for the next scheduled pass. */
+	@PostMapping("/incidents/evaluate")
+	public Map<String, Object> evaluate(@RequestParam(defaultValue = "false") boolean force) {
+		incidents.evaluate(java.time.LocalDateTime.now(), force);
+		return incidents.list("active", "24h");
+	}
+
 	@GetMapping("/incidents/{id}")
 	public Map<String, Object> detail(@PathVariable long id) {
 		return incidents.detail(id, impact);

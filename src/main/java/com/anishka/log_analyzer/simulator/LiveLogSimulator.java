@@ -203,6 +203,42 @@ public class LiveLogSimulator {
 
 	/** Starts an incident on demand (used by the dashboard demo control). */
 	public Incident triggerIncident(String service, int minutes) {
+		return triggerIncident(service, minutes, 0);
+	}
+
+	/**
+	 * Starts an incident and optionally replays the last {@code burstMinutes} of it at once, so alert
+	 * rules can fire immediately (used by presentation mode, which runs on a fixed script).
+	 */
+	public Incident triggerIncident(String service, int minutes, int burstMinutes) {
+		Incident inc = startIncident(service, minutes);
+		if (burstMinutes > 0) {
+			LocalDateTime now = LocalDateTime.now();
+			int n = 14 * Math.min(burstMinutes, 5);
+			List<LocalDateTime> stamps = new ArrayList<>(n);
+			for (int i = 0; i < n; i++) {
+				stamps.add(now.minusNanos((long) (rnd.nextDouble() * burstMinutes * 60_000) * 1_000_000L));
+			}
+			stamps.sort(Comparator.naturalOrder());
+			List<ParsedLog> batch = new ArrayList<>(n);
+			for (LocalDateTime ts : stamps) {
+				BfsiLogGenerator.GeneratedLog g = generator.nextIncidentEvent(ts, rnd, inc.service());
+				batch.addAll(parser.parse(g.raw(), g.service()));
+			}
+			flush(batch);
+		}
+		return inc;
+	}
+
+	/** Ends the current simulated incident early. */
+	public void stopIncident() {
+		if (currentIncident != null) {
+			log.info("Simulated incident on {} stopped", currentIncident.service());
+		}
+		currentIncident = null;
+	}
+
+	private Incident startIncident(String service, int minutes) {
 		List<String> busy = generator.busyServiceNames();
 		String svc = service != null && generator.serviceNames().contains(service) ? service
 				: busy.get(rnd.nextInt(busy.size()));

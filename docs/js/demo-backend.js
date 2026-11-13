@@ -135,8 +135,9 @@
 		}
 	}
 
-	function generate(ts, incidentService) {
-		const p = pickProfile(incidentService);
+	function generate(ts, incidentService, forced) {
+		const p = forced ? (PROFILES.find((x) => x.name === forced) || PROFILES[0]) : pickProfile(incidentService);
+		if (forced) incidentService = p.name;
 		const inIncident = p.name === incidentService;
 		const roll = rnd();
 		let level, msg;
@@ -954,7 +955,7 @@
 		return i;
 	}
 
-	function evaluate(now) {
+	function evaluate(now, ignoreSnooze) {
 		const enabled = inc.rules.filter((r) => r.enabled);
 		const strongest = new Map();
 		const windows = [...new Set(enabled.map((r) => r.windowMinutes))];
@@ -980,7 +981,7 @@
 		for (const [svc, b] of strongest) {
 			const active = inc.list.find((i) => i.service === svc && isActive(i));
 			if (!active) {
-				const snoozed = inc.list.some((i) => i.service === svc && i.resolvedAt && i.resolvedBy !== 'auto-recovery' && i.resolvedAt > now - SNOOZE_MIN * MIN);
+				const snoozed = !ignoreSnooze && inc.list.some((i) => i.service === svc && i.resolvedAt && i.resolvedBy !== 'auto-recovery' && i.resolvedAt > now - SNOOZE_MIN * MIN);
 				if (snoozed) continue;
 				const i = openIncident(svc, b, now, now - b.window * MIN);
 				changed(i, 'opened');
@@ -1233,6 +1234,7 @@
 			return json({ events: previews.length, stored: false, formats: formatCounts(previews), preview: previews.slice(0, 200) });
 		}
 		if (method === 'GET' && path === '/api/impact') return json(impact(params.get('range')));
+		if (method === 'POST' && path === '/api/incidents/evaluate') { evaluate(Date.now(), params.get('force') === 'true'); return json(incidentList('active', '24h')); }
 		if (method === 'GET' && path === '/api/incidents') return json(incidentList(params.get('status'), params.get('range')));
 		if (method === 'GET' && (m = path.match(/^\/api\/incidents\/(\d+)$/))) return json(incidentDetail(Number(m[1])));
 		if (method === 'POST' && (m = path.match(/^\/api\/incidents\/(\d+)\/ack$/))) { acknowledge(Number(m[1])); return json(incidentDetail(Number(m[1]))); }
@@ -1256,8 +1258,18 @@
 			const req = blank(params.get('service')), minutes = Math.max(1, Math.min(Number(params.get('minutes')) || 5, 30));
 			const svc = req && services().includes(req) ? req : pick(BUSY);
 			sim.incident = { service: svc, start: Date.now(), end: Date.now() + minutes * MIN };
+			const burst = Math.max(0, Math.min(Number(params.get('burst')) || 0, 5));
+			if (burst) { // replay the last minutes of the outage at once (presentation mode)
+				const now = Date.now(), stamps = [];
+				for (let i = 0; i < 14 * burst; i++) stamps.push(now - int(burst * MIN));
+				stamps.sort((a, b) => a - b);
+				const parsed = [];
+				for (const ts of stamps) { const g = generate(ts, svc, svc); parsed.push(...parseText(g.raw, g.service)); }
+				save(parsed, true);
+			}
 			return json(simStatus());
 		}
+		if (method === 'POST' && path === '/api/simulator/incident/stop') { sim.incident = null; return json(simStatus()); }
 		if (path === '/api/ai/status') return json({ provider: 'Google Gemini', enabled: false, configured: false, model: 'nlp-playbook', mode: 'NLP', redaction: true, maxCallsPerHour: 0 });
 		if (method === 'POST' && path === '/api/ai/overview') { return json(analyzeOverview(params.get('range'), params.get('force') === 'true')); }
 		if (method === 'GET' && path === '/api/ai/overview/latest') {

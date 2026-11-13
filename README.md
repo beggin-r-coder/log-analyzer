@@ -38,6 +38,25 @@ store logs from the parser, and open the H2 console.
 6. The **Parser** tab: **Load samples**, then **Parse** to show 12 log formats detected automatically.
 7. Step 5, **Export the PDF report**; then open the site on your phone.
 
+## Presentation mode
+
+Click **Present** in the top bar (or press **P**) for a full-screen, guided 2-minute story that runs on the live
+system rather than slides:
+
+1. **Welcome** and **The problem**: live counters and real log lines from the store.
+2. **Live system**: an animated service map; every moving dot is a real log event arriving over Server-Sent Events.
+3. **Incident**: a real UPI switch outage is injected, the node turns red and NPCI errors stream in.
+4. **Detection**: the alert rules open a real incident and page the on-call team, which acknowledges it.
+5. **Business impact**: money at risk, failed transactions, customers affected and SLA budget burn for that incident.
+6. **Diagnosis**: the NLP engine shows the error pattern, similar errors, root cause and recovery steps.
+7. **Resolution**: the outage is stopped and the incident resolved, with the timeline and its MTTA / MTTR.
+8. **Why it matters** and **Thank you**.
+
+It plays on its own with narration captions. Use `←` `→` to move, `Space` to pause, `N` for captions, `F` for full
+screen and `Esc` to exit. You can also open it straight away with `#present` at the end of the dashboard address.
+It works in the GitHub Pages demo too. The incident it creates is a real (simulated) one, so it appears in the
+incident list afterwards.
+
 ## Browser-only demo (GitHub Pages)
 
 `docs/` holds a copy of the dashboard that runs entirely in the browser, for networks where app hosts are blocked.
@@ -265,10 +284,11 @@ GET  /api/logs/stream          (Server-Sent Events: "logs" with newly stored rec
 GET  /api/logs/{id}            GET /api/logs/facets          GET /api/logs/export?...
 POST /api/logs/ingest?service=my-app   (text/plain body, any format; stored)
 POST /api/logs/parse                   (preview only)
-POST /api/simulator/pause | resume | incident?service=card-auth&minutes=5
+POST /api/simulator/pause | resume | incident?service=card-auth&minutes=5[&burst=2] | incident/stop
 GET  /api/impact?range=24h                     (money at risk, failed transactions, customers, SLA, MTTA/MTTR)
 GET  /api/incidents?status=active|all|resolved&range=7d      GET /api/incidents/{id}   (with timeline and impact)
 POST /api/incidents/{id}/ack     POST /api/incidents/{id}/resolve {"note": "..."}     POST /api/incidents/{id}/notes {"text": "..."}
+POST /api/incidents/evaluate[?force=true]       (run the alert rules now)
 GET  /api/alert-rules            POST/PUT/DELETE /api/alert-rules[/{id}]   (admin only)
 ```
 

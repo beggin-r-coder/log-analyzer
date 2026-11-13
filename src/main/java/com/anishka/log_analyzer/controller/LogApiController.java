@@ -142,8 +142,14 @@ public class LogApiController {
 
 	@PostMapping("/simulator/incident")
 	public Map<String, Object> incident(@RequestParam(required = false) String service,
-			@RequestParam(defaultValue = "5") int minutes) {
-		simulator.triggerIncident(blank(service), minutes);
+			@RequestParam(defaultValue = "5") int minutes, @RequestParam(defaultValue = "0") int burst) {
+		simulator.triggerIncident(blank(service), minutes, Math.max(0, Math.min(burst, 5)));
+		return simulator.status();
+	}
+
+	@PostMapping("/simulator/incident/stop")
+	public Map<String, Object> stopIncident() {
+		simulator.stopIncident();
 		return simulator.status();
 	}
 

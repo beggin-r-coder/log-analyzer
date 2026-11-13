@@ -141,6 +141,12 @@ public class IncidentService {
 
 	@Transactional
 	public void evaluate(LocalDateTime now) {
+		evaluate(now, false);
+	}
+
+	/** @param ignoreSnooze re-alert even right after a manual resolve (presentation reruns) */
+	@Transactional
+	public void evaluate(LocalDateTime now, boolean ignoreSnooze) {
 		List<AlertRule> enabled = rules().stream().filter(AlertRule::isEnabled).toList();
 		// service -> strongest breach
 		Map<String, Breach> breaches = new HashMap<>();
@@ -159,7 +165,7 @@ public class IncidentService {
 			}
 		}
 		for (Map.Entry<String, Breach> e : breaches.entrySet()) {
-			onBreach(e.getKey(), e.getValue(), now);
+			onBreach(e.getKey(), e.getValue(), now, ignoreSnooze);
 		}
 		for (Incident i : incidents.findByStatusInOrderByOpenedAtDesc(ACTIVE)) {
 			if (!breaches.containsKey(i.getService()) && i.getLastBreachAt() != null
@@ -181,10 +187,10 @@ public class IncidentService {
 		}
 	}
 
-	private void onBreach(String svc, Breach b, LocalDateTime now) {
+	private void onBreach(String svc, Breach b, LocalDateTime now, boolean ignoreSnooze) {
 		Incident active = incidents.findFirstByServiceAndStatusIn(svc, ACTIVE).orElse(null);
 		if (active == null) {
-			boolean snoozed = incidents.findByOpenedAtGreaterThanEqualOrderByOpenedAtDesc(now.minusHours(2)).stream()
+			boolean snoozed = !ignoreSnooze && incidents.findByOpenedAtGreaterThanEqualOrderByOpenedAtDesc(now.minusHours(2)).stream()
 					.anyMatch(i -> i.getService().equals(svc) && i.getResolvedAt() != null
 							&& !"auto-recovery".equals(i.getResolvedBy())
 							&& i.getResolvedAt().isAfter(now.minusMinutes(SNOOZE_AFTER_MANUAL_RESOLVE_MINUTES)));
