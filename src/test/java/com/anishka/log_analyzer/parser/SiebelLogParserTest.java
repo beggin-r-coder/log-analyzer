@@ -90,6 +90,16 @@ class SiebelLogParserTest {
 	}
 
 	@Test
+	void headerWithSpacesInThePathAndNoVersion() {
+		List<ParsedLog> logs = parser.parse(String.join("\n",
+				"2021 2026-11-12 10:15:01 0000-00-00 00:00:00 +0000 00000000 001 003f 0001 09 EAIObjMgr_enu 4411 2210 8812 D:\\Program Files\\Siebel\\log\\EAIObjMgr_enu_0007_4411.log",
+				"GenericLog\tGenericError\t1\t0000000257c41c8c:0\t2026-11-12 10:15:05\tSBL-EAI-04308: failed"), null);
+		assertEquals(2, logs.size());
+		assertEquals("EAIObjMgr_enu", logs.get(1).getService());
+		assertTrue(logs.get(0).getMessage().endsWith("EAIObjMgr_enu_0007_4411.log"), logs.get(0).getMessage());
+	}
+
+	@Test
 	void severityMapping() {
 		assertEquals("INFO", UniversalLogParser.siebelLevel("ServerLog", "LstnObjCreate", 1, "Created port 49170 for Server Request Processor"));
 		assertEquals("ERROR", UniversalLogParser.siebelLevel("ServerLog", "ProcessExit", 1, "SCCObjMgr_enu 4711 EXITED Process exited with error - code 1"));

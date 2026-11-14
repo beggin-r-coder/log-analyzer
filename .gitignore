@@ -36,3 +36,7 @@ data/
 ### local secrets ###
 .env
 *.zip
+
+# written by "Try with sample Siebel logs"
+sample-siebel-logs/
+dist/

@@ -38,6 +38,57 @@ store logs from the parser, and open the H2 console.
 6. The **Parser** tab: **Load samples**, then **Parse** to show 12 log formats detected automatically.
 7. Step 5, **Export the PDF report**; then open the site on your phone.
 
+## Windows desktop app
+
+Log Analyzer also runs as a normal Windows program, so it can be used on corporate laptops without any cloud
+hosting and without installing Java.
+
+**Download:** every push builds it on a Windows machine with GitHub Actions (*Actions → Windows app → latest run →
+Artifacts*):
+
+- `LogAnalyzer-1.0.0-portable.zip`: unzip anywhere and run `LogAnalyzer\LogAnalyzer.exe` (no admin rights needed).
+- `LogAnalyzer-1.0.0.msi`: per-user installer with a Start-menu entry and desktop shortcut.
+
+Tags named `v*` also attach both files to a GitHub release. The workflow starts the packaged `.exe`, connects the
+sample Siebel logs and checks the dashboard before publishing anything.
+
+**What it does:**
+
+- Starts with a splash screen, then opens the dashboard in its own window (Microsoft Edge in app mode), with a tray
+  icon to reopen it, open **Log sources** or **Quit**. Only one copy runs per user; starting it again reopens the window.
+- Runs the server on `127.0.0.1` only. There is no login screen; instead each run gets a random token, and only the
+  window opened with it can use the app (same-site cookie plus a loopback host check), so web pages and other
+  programs cannot.
+- Keeps its data in `%LOCALAPPDATA%\LogAnalyzer` (`data`, `logs\log-analyzer.log`).
+- On first start it asks where your logs are.
+
+**Log sources** (also available in the server version, for admins, from the ⋯ menu):
+
+- **Siebel log folder:** a local folder or a network share such as `\\siebel01\siebsrvr\enterprises\ENT\SRV\log`.
+  Every file matching the pattern (default `*.log`) is followed like `tail -f`: only new bytes are read, offsets are
+  saved so restarts continue where they stopped, rotated files are read again, and a still-growing event (multi-line
+  SQL) is held back until it is complete. The Siebel header of each file is applied even when reading from the middle.
+  On first scan, files not changed within the chosen history window are only followed from then on.
+- **Database:** SQL Server, Oracle, PostgreSQL or MySQL (drivers included), or any JDBC URL. Enter a table or a SELECT,
+  click **Test** to see the first rows, and map the columns (suggested automatically): timestamp, message, level or
+  Siebel severity 0-5, component, SARM / trace id, host, or a column with complete raw log lines. Only rows newer than
+  the last one read are fetched (by an increasing id column, or by timestamp). Use a read-only account. Passwords are
+  stored encrypted (AES-GCM, key in the user's profile) and never sent back to the browser.
+- **Try with sample Siebel logs:** writes realistic Siebel component logs into a folder and follows it, to try the app
+  without access to a Siebel server.
+
+**Build it yourself on Windows** (JDK 21):
+
+```
+mvnw.cmd -DskipTests package
+jpackage --type app-image --name LogAnalyzer --input target --main-jar log-analyzer-1.0.0.jar --icon packaging\windows\LogAnalyzer.ico --java-options "-Dapp.launch=desktop"
+```
+
+Without packaging, `java -jar target/log-analyzer-1.0.0.jar --desktop` runs the same desktop mode on any OS.
+
+**Corporate notes:** the `.exe` is not code-signed, so Windows SmartScreen may warn about an unknown publisher; IT can
+allow it or sign it with the company certificate. The laptop needs read access to the log share or the database.
+
 ## Presentation mode
 
 Click **Present** in the top bar (or press **P**) for a full-screen, guided 2-minute story built for pitches and

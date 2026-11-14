@@ -18,12 +18,20 @@ public class DashboardController {
 	private final String guestName;
 	private final String guestPassword;
 	private final boolean aiEnabled;
+	private final boolean desktop;
+	private final com.anishka.log_analyzer.source.LogSourceRepository sources;
+	private final com.anishka.log_analyzer.repository.LogRecordRepository logs;
 
 	public DashboardController(@Value("${app.brand.name:NovaBank}") String brandName,
 			@Value("${app.brand.tagline:BFSI Observability}") String brandTagline,
 			@Value("${spring.h2.console.enabled:false}") boolean h2Console,
 			@Value("${app.demo.enabled:false}") boolean demoMode, @Value("${app.demo.username:guest}") String guestName,
-			@Value("${app.demo.password:demo}") String guestPassword, @Value("${ai.gemini.enabled:false}") boolean aiEnabled) {
+			@Value("${app.demo.password:demo}") String guestPassword, @Value("${ai.gemini.enabled:false}") boolean aiEnabled,
+			@Value("${app.desktop.enabled:false}") boolean desktop, com.anishka.log_analyzer.source.LogSourceRepository sources,
+			com.anishka.log_analyzer.repository.LogRecordRepository logs) {
+		this.desktop = desktop;
+		this.sources = sources;
+		this.logs = logs;
 		this.aiEnabled = aiEnabled;
 		this.demoMode = demoMode;
 		this.guestName = guestName;
@@ -48,11 +56,21 @@ public class DashboardController {
 		model.addAttribute("guestName", guestName);
 		model.addAttribute("guestPassword", guestPassword);
 		model.addAttribute("aiEnabled", aiEnabled);
+		model.addAttribute("desktop", desktop);
 	}
 
 	@GetMapping("/")
 	public String dashboard() {
+		// desktop app, first run: nothing to show yet, so start at "connect your logs"
+		if (desktop && sources.count() == 0 && logs.count() == 0) {
+			return "redirect:/sources?welcome";
+		}
 		return "dashboard";
+	}
+
+	@GetMapping("/sources")
+	public String sources() {
+		return "sources";
 	}
 
 	@GetMapping("/login")

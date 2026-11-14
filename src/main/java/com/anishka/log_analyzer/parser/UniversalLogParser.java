@@ -80,7 +80,7 @@ public class UniversalLogParser {
 	// First line of every Siebel log file, e.g.
 	// 2021 2024-03-04 10:12:22 0000-00-00 00:00:00 +0530 00000000 001 003f 0001 09 SCCObjMgr_enu 2097155 5360 4940 d:\siebel\log\SCCObjMgr_enu_0020_2097155.log 8.1.1.11 [23030] ENU
 	private static final Pattern SIEBEL_HEADER = Pattern.compile("^\\d+\\s+(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})\\s+"
-			+ "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\s+([+-]\\d{4})\\s+(?:\\S+\\s+){5}([A-Za-z][\\w]*)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\S+)\\s*(.*)$");
+			+ "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\s+([+-]\\d{4})\\s+(?:\\S+\\s+){5}([A-Za-z][\\w]*)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\S.*?)(?:\\s+(\\d+(?:\\.\\d+){2,}\\b.*))?$");
 	private static final Pattern SIEBEL_ERR = Pattern.compile(
 			"(?i)\\bSBL-[A-Z]{3}-\\d{5}\\b|\\berr=\\d+|\\berror\\b|\\bfail|exception|\\bcrash|terminated|\\babort|unable to|timed? ?out|\\bORA-\\d{5}\\b|\\[ODBC|core dump|segmentation");
 	private static final Pattern SIEBEL_FATAL = Pattern.compile("(?i)\\bcrash|core dump|segmentation|\\bfatal\\b|was terminated|access violation");
@@ -158,6 +158,22 @@ public class UniversalLogParser {
 		return out;
 	}
 
+	/** True for the first line of a Siebel log file (component, task and UTC offset). */
+	public static boolean isSiebelHeader(String line) {
+		return line != null && SIEBEL_HEADER.matcher(line.strip()).matches();
+	}
+
+	/**
+	 * Whether a line starts a new event (as opposed to continuing the previous one: stack frames, SQL text...).
+	 * Used when tailing growing files, so an event is not cut in half at the end of what has been written so far.
+	 */
+	public static boolean startsNewEvent(String line, boolean siebelFile) {
+		if (line == null || line.isBlank()) return false;
+		String s = line.strip();
+		if (siebelFile) return SIEBEL_EVENT.matcher(s).matches() || SIEBEL_HEADER.matcher(s).matches() || STARTS_LIKE_EVENT.matcher(s).find();
+		return !CONTINUATION.matcher(line).find();
+	}
+
 	/** Parses a single line. Returns empty only for blank input. */
 	public Optional<ParsedLog> parseLine(String rawLine, String defaultService) {
 		if (rawLine == null || rawLine.isBlank()) {
@@ -233,7 +249,7 @@ public class UniversalLogParser {
 	 * ProcessCreate are logged at 1 ("errors") although they are routine. So severity 0-1 counts as an error
 	 * only when the event or its text says so (SBL-xxx-nnnnn codes, err=, ORA-, failed, terminated...).
 	 */
-	static String siebelLevel(String type, String sub, int severity, String msg) {
+	public static String siebelLevel(String type, String sub, int severity, String msg) {
 		String kind = type + " " + sub;
 		boolean namedError = kind.contains("Error") || kind.contains("Fatal");
 		boolean errorText = SIEBEL_ERR.matcher(msg).find();
@@ -251,7 +267,7 @@ public class UniversalLogParser {
 	}
 
 	private ParsedLog siebelHeader(Matcher h, SiebelContext ctx, String line) {
-		String version = h.group(8).isBlank() ? "" : " · Siebel " + h.group(8).strip();
+		String version = h.group(8) == null || h.group(8).isBlank() ? "" : " · Siebel " + h.group(8).strip();
 		return new ParsedLog().format(LogFormat.SIEBEL).timestamp(ctx.toLocal(parseTimestamp(h.group(1)))).level("INFO")
 				.service(ctx.component()).thread("task " + ctx.task()).logger("SiebelLogHeader")
 				.message("Log opened: " + ctx.component() + " task " + ctx.task() + " (pid " + h.group(5) + ", thread "

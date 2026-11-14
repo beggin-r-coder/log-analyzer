@@ -50,6 +50,8 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.POST, "/api/logs/ingest", "/api/simulator/pause", "/api/simulator/resume")
 				.hasRole("ADMIN")
 				.requestMatchers("/h2-console/**").hasRole("ADMIN")
+				// log sources read files and databases on this machine: admin only
+				.requestMatchers("/sources", "/api/sources", "/api/sources/**", "/api/desktop/**").hasRole("ADMIN")
 				// alert rules are configuration: viewers can read them, only admins change them
 				.requestMatchers(HttpMethod.POST, "/api/alert-rules", "/api/alert-rules/**").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.PUT, "/api/alert-rules/**").hasRole("ADMIN")

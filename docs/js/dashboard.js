@@ -561,6 +561,12 @@
 	function renderSimulator(sim) {
 		if (!sim) return;
 		state.simulatorRunning = sim.running;
+		if (window.APP_USER && window.APP_USER.desktop) { // desktop: logs come from the connected sources, not the simulator
+			$('livePill').classList.remove('paused');
+			$('liveText').textContent = 'Live';
+			$('livePill').title = 'Reading from your log sources. Click to manage them.';
+			return;
+		}
 		$('livePill').classList.toggle('paused', !sim.running);
 		$('liveText').textContent = sim.seeding ? 'Seeding…' : sim.running ? 'Live' : 'Paused';
 		const banner = $('incidentBanner');
@@ -903,6 +909,7 @@
 
 		// simulator controls
 		$('livePill').addEventListener('click', async () => {
+			if (window.APP_USER && window.APP_USER.desktop) { location.href = '/sources'; return; }
 			if (window.APP_USER && !window.APP_USER.admin) {
 				toast('Read-only demo account: only the admin can pause the live stream');
 				return;
@@ -912,7 +919,13 @@
 				toast(state.simulatorRunning ? 'Live log stream resumed' : 'Live log stream paused');
 			} catch (e) { toast('Failed: ' + e.message); }
 		});
-		$('incidentBtn').addEventListener('click', async () => {
+		if ($('quitBtn')) $('quitBtn').addEventListener('click', async () => {
+			if (!confirm('Quit Log Analyzer? Logs are not read while it is closed.')) return;
+			try { await fetch('/api/desktop/quit', { method: 'POST' }); } catch (e) { /* closing */ }
+			document.body.innerHTML = '<div style="display:grid;place-items:center;height:100vh;font-family:system-ui,sans-serif;color:#6b7280">Log Analyzer has been closed. You can close this window.</div>';
+			setTimeout(() => window.close(), 600);
+		});
+		if ($('incidentBtn')) $('incidentBtn').addEventListener('click', async () => {
 			closeMenus();
 			try {
 				const s = await api('/api/simulator/incident?minutes=5', { method: 'POST' });
@@ -954,7 +967,9 @@
 	];
 	const DEFAULT_ORDER = ['kpi-total', 'kpi-info', 'kpi-warn', 'kpi-error', 'kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents',
 		'impact', 'sla', 'incidentdesk', 'health', 'trend', 'livefeed', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'aianalysis', 'incidents', 'services', 'explorer'];
-	const DEFAULT_HIDDEN = ['kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'volume', 'formats', 'errorrate', 'svcerrors'];
+	const DEFAULT_HIDDEN = ['kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'volume', 'formats', 'errorrate', 'svcerrors']
+		// desktop (Siebel / own logs): the payments impact panel only applies to banking payment services
+		.concat(window.APP_USER && window.APP_USER.desktop ? ['impact'] : []);
 	const LAYOUT_KEY = 'layout.v1';
 
 	const layout = (() => {

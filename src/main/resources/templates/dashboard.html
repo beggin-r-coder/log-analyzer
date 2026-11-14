@@ -36,7 +36,7 @@
 			</a>
 			<span class="crumb-sep" aria-hidden="true">/</span>
 			<span class="workspace" th:text="${brandName}">NovaBank</span>
-			<span class="env-tag" th:text="${demoMode} ? 'demo' : 'prod'">prod</span>
+			<span class="env-tag" th:text="${desktop} ? 'desktop' : (${demoMode} ? 'demo' : 'prod')">prod</span>
 
 			<nav class="nav-tabs" aria-label="Primary">
 				<a href="#" class="active" data-nav="top">Overview</a>
@@ -90,11 +90,16 @@
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
 					</button>
 					<div class="menu right" id="moreMenu" role="menu" hidden>
-						<button role="menuitem" id="incidentBtn">Simulate an incident<small>Injects 5 min of errors into one service</small></button>
+						<a role="menuitem" href="/sources" th:if="${isAdmin}" data-server-only>Log sources<small>Siebel log folders and databases to read from</small></a>
+						<button role="menuitem" id="incidentBtn" th:unless="${desktop}">Simulate an incident<small>Injects 5 min of errors into one service</small></button>
 						<a role="menuitem" href="/parser">Parser playground<small>Test how any log line is parsed</small></a>
 						<th:block th:if="${h2Console}">
 							<div class="menu-sep"></div>
 							<a role="menuitem" href="/h2-console" target="_blank" rel="noopener">Open H2 console<small>Browse the log_records table</small></a>
+						</th:block>
+						<th:block th:if="${desktop}">
+							<div class="menu-sep"></div>
+							<button role="menuitem" id="quitBtn" type="button">Quit Log Analyzer<small>Stops reading logs and closes the app</small></button>
 						</th:block>
 						<th:block th:if="${username}">
 							<div class="menu-sep"></div>
@@ -113,7 +118,8 @@
 		<div class="page-head">
 			<div>
 				<h1>System Overview</h1>
-				<p>Live analysis of logs persisted in H2 from <span id="serviceCount">12</span> banking services: errors, trends and incidents.</p>
+				<p th:if="${desktop}">Live analysis of the logs from your <a href="/sources">connected sources</a>: <span id="serviceCount">0</span> services, errors, trends and incidents.</p>
+				<p th:unless="${desktop}">Live analysis of logs persisted in H2 from <span id="serviceCount">12</span> banking services: errors, trends and incidents.</p>
 			</div>
 		</div>
 
@@ -651,7 +657,7 @@
 	<div class="toast" id="toast"></div>
 
 	<script th:src="@{/js/http.js}" src="/js/http.js"></script>
-	<script th:inline="javascript">window.APP_USER = { admin: /*[[${isAdmin}]]*/ true, demo: /*[[${demoMode}]]*/ false, ai: /*[[${aiEnabled}]]*/ false };</script>
+	<script th:inline="javascript">window.APP_USER = { admin: /*[[${isAdmin}]]*/ true, demo: /*[[${demoMode}]]*/ false, ai: /*[[${aiEnabled}]]*/ false, desktop: /*[[${desktop}]]*/ false };</script>
 	<script th:inline="javascript">window.APP_BRAND = { name: /*[[${brandName}]]*/ "NovaBank", tagline: /*[[${brandTagline}]]*/ "BFSI Observability" };</script>
 	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
 	<script th:src="@{/js/ai.js}" src="/js/ai.js"></script>

@@ -192,7 +192,7 @@
 		continuation: /^(?:\s+at\s|\s+\.\.\.\s*\d+\s+more|Caused by:|\s{2,}\S|\t)/,
 		// Oracle Siebel CRM
 		siebelEvent: /^([A-Za-z]\w*)(?:\t+|\s{2,})([A-Za-z]\w*)(?:\t+|\s{2,})([0-5])(?:\t+|\s{2,})(\S+)(?:\t+|\s{2,})(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\s+([\s\S]*))?$/,
-		siebelHeader: /^\d+\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+([+-]\d{4})\s+(?:\S+\s+){5}([A-Za-z]\w*)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s*(.*)$/,
+		siebelHeader: /^\d+\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+([+-]\d{4})\s+(?:\S+\s+){5}([A-Za-z]\w*)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S.*?)(?:\s+(\d+(?:\.\d+){2,}\b.*))?$/,
 		siebelErr: /\bSBL-[A-Z]{3}-\d{5}\b|\berr=\d+|\berror\b|\bfail|exception|\bcrash|terminated|\babort|unable to|timed? ?out|\bORA-\d{5}\b|\[ODBC|core dump|segmentation/i,
 		siebelFatal: /\bcrash|core dump|segmentation|\bfatal\b|was terminated|access violation/i,
 		startsLikeEvent: new RegExp('^(?:' + TS_ANY + '|\\{|<\\d|\\[\\w{3} )')
@@ -422,7 +422,7 @@
 			if (h) { // a Siebel log file starts: remember its component, task and offset
 				siebel = { component: h[3], task: h[4], offset: h[2] };
 				current = rec('SIEBEL', { timestamp: atOffset(h[1], h[2]), level: 'INFO', service: h[3], thread: 'task ' + h[4], logger: 'SiebelLogHeader',
-					message: `Log opened: ${h[3]} task ${h[4]} (pid ${h[5]}, thread ${h[6]})${h[8].trim() ? ' · Siebel ' + h[8].trim() : ''} · ${h[7]}` });
+					message: `Log opened: ${h[3]} task ${h[4]} (pid ${h[5]}, thread ${h[6]})${h[8] && h[8].trim() ? ' · Siebel ' + h[8].trim() : ''} · ${h[7]}` });
 				current.rawLine = st; current.clientIp = null; current.traceId = null; current.host = null;
 				out.push(current);
 				continue;

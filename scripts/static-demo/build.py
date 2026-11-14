@@ -95,6 +95,9 @@ def to_static(html, page):
     html = re.sub(r'<div class="menu-sep"></div>\s*<form action="/logout".*?</form>', '', html, flags=re.S)
     html = re.sub(r'<form [^>]*action="/logout".*?</form>', '', html, flags=re.S)
     html = re.sub(r'<input type="hidden" name="_csrf"[^>]*>', '', html)
+    # log sources read files and databases on the server: not part of the browser-only demo
+    html = re.sub(r'<a role="menuitem" href="/sources"[^>]*>.*?</a>\s*', '', html, flags=re.S)
+    html = re.sub(r'\s*<a href="/sources"[^>]*>Sources</a>', '', html)
     # links
     for a, b in (('href="/"', 'href="./"'), ('href="/parser"', 'href="parser.html"'), ('href="/#explorer"', 'href="./#explorer"'),
                  ('href="/#live"', 'href="./#live"')):
