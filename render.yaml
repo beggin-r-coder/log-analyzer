@@ -1,0 +1,20 @@
+# Free demo on Render: New > Blueprint, pick this repository.
+# Free instances sleep after ~15 idle minutes (first visit then takes ~1 minute) and
+# have no persistent disk, so demo data is regenerated after each restart. That is fine for a demo.
+services:
+  - type: web
+    name: log-analyzer-demo
+    runtime: docker
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: APP_PASSWORD        # your admin password; visitors use "Explore as guest"
+        sync: false
+      # Error analysis runs on the built-in NLP engine; Gemini is off (AI_ENABLED=false).
+      # To turn it on later add AI_ENABLED=true and GEMINI_API_KEY here.
+      - key: SEED_DAYS
+        value: "2"
+      - key: JAVA_OPTS           # fits the free plan's 512 MB
+        value: "-Xmx256m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"

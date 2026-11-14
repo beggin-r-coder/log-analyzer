@@ -1,0 +1,111 @@
+# Builds the Windows desktop app (LogAnalyzer.exe) on a Windows machine, starts it and checks it works,
+# then publishes a portable zip and an .msi installer as downloadable artifacts (and on v* tags, a release).
+name: Windows app
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION: 1.0.0
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build and run the tests (on Windows)
+        run: ./mvnw.cmd -B -ntp package
+
+      - name: Package LogAnalyzer.exe (portable, Java included)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force target/jpackage-input | Out-Null
+          Copy-Item "target/log-analyzer-$env:APP_VERSION.jar" target/jpackage-input/log-analyzer.jar
+          jpackage --type app-image --name LogAnalyzer --app-version $env:APP_VERSION `
+            --vendor "Log Analyzer" --description "Log analytics for Siebel CRM and banking services" `
+            --input target/jpackage-input --main-jar log-analyzer.jar `
+            --icon packaging/windows/LogAnalyzer.ico `
+            --java-options "-Dapp.launch=desktop" --java-options "-Xmx768m" --java-options "-Dfile.encoding=UTF-8" `
+            --dest dist
+          Compress-Archive -Path dist/LogAnalyzer -DestinationPath "dist/LogAnalyzer-$env:APP_VERSION-portable.zip"
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - name: Start the packaged app and check it works
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath dist/LogAnalyzer/LogAnalyzer.exe -ArgumentList '--no-window' -PassThru
+          $appHome = Join-Path $env:LOCALAPPDATA 'LogAnalyzer'
+          $file = Join-Path $appHome 'instance.properties'
+          for ($i = 0; $i -lt 120 -and -not (Test-Path $file); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path $file)) { Get-Content (Join-Path $appHome 'logs/log-analyzer.log') -Tail 80; throw 'The app did not start' }
+          $props = Get-Content $file
+          $port = ($props | Where-Object { $_ -like 'port=*' }) -replace '^port=', ''
+          $enter = (($props | Where-Object { $_ -like 'url=*' }) -replace '^url=', '') -replace '\\', ''
+          $base = "http://127.0.0.1:$port"
+          Write-Host "Running on $base"
+
+          $health = Invoke-RestMethod "$base/actuator/health"
+          if ($health.status -ne 'UP') { throw "Health: $($health.status)" }
+
+          # without this run's token the API refuses
+          try { Invoke-WebRequest "$base/api/sources" -UseBasicParsing | Out-Null; throw 'API answered without the token' }
+          catch { if ($_.Exception.Response.StatusCode.value__ -ne 403) { throw } }
+
+          $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          Invoke-WebRequest $enter -WebSession $s -UseBasicParsing | Out-Null
+          $sample = Invoke-RestMethod -Method Post "$base/api/sources/sample" -WebSession $s
+          Write-Host "Sample Siebel logs in $($sample.path): $($sample.eventsIngested) events, $($sample.filesTracked) files"
+          Start-Sleep 8
+          $d = Invoke-RestMethod "$base/api/dashboard?range=24h" -WebSession $s
+          $services = ($d.services | ForEach-Object { $_.name }) -join ', '
+          Write-Host "Dashboard: $($d.totals.total) events from $services"
+          if ($d.totals.total -lt 100) { throw 'Too few events read from the sample Siebel logs' }
+          $src = Invoke-RestMethod "$base/api/sources" -WebSession $s
+          if ($src[0].status -ne 'RUNNING') { throw "Source status: $($src[0].status) $($src[0].lastError)" }
+
+          Invoke-RestMethod -Method Post "$base/api/desktop/quit" -WebSession $s | Out-Null
+          if (-not $app.WaitForExit(30000)) { throw 'The app did not quit' }
+          Write-Host 'Quit cleanly'
+
+      - name: Build the .msi installer
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset --no-progress -y | Out-Null
+            $env:PATH += ";${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin"
+          }
+          jpackage --type msi --app-image dist/LogAnalyzer --name LogAnalyzer --app-version $env:APP_VERSION `
+            --vendor "Log Analyzer" --description "Log analytics for Siebel CRM and banking services" `
+            --win-per-user-install --win-menu --win-menu-group "Log Analyzer" --win-shortcut `
+            --win-upgrade-uuid 6b1f2a52-3c7e-4f7a-9a52-1d1c2f0e7a11 --dest dist
+          Get-ChildItem dist/*.msi | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LogAnalyzer-windows-${{ env.APP_VERSION }}
+          path: |
+            dist/*.zip
+            dist/*.msi
+          if-no-files-found: error
+
+      - name: Attach to the GitHub release (v* tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME (Get-ChildItem dist/*.zip, dist/*.msi).FullName --generate-notes --title "Log Analyzer $env:GITHUB_REF_NAME"

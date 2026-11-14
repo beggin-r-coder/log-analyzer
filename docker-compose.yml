@@ -1,0 +1,23 @@
+# Local or single-server deployment:  docker compose up -d --build
+# Put secrets in a .env file next to this one (see .env.example). Never commit .env.
+services:
+  log-analyzer:
+    build: .
+    image: log-analyzer:latest
+    ports:
+      - "8080:8080"
+    environment:
+      DEMO_MODE: ${DEMO_MODE:-true}
+      APP_USERNAME: ${APP_USERNAME:-admin}
+      APP_PASSWORD: ${APP_PASSWORD:?Set APP_PASSWORD in .env}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      BRAND_NAME: ${BRAND_NAME:-NovaBank}
+      # plain http on localhost; set to true once the site is served over HTTPS
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+    volumes:
+      - log-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  log-data:
