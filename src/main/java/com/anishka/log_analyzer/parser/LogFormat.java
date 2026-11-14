@@ -3,6 +3,7 @@ package com.anishka.log_analyzer.parser;
 /** Log formats the {@link UniversalLogParser} can recognise. */
 public enum LogFormat {
 	JSON("JSON (ELK / Logstash)"),
+	SIEBEL("Siebel CRM log"),
 	SPRING_BOOT("Spring Boot"),
 	LOG4J("Log4j / Logback"),
 	PYTHON("Python logging"),

@@ -21,7 +21,8 @@ public final class ServiceCatalog {
 			Map.entry("netbanking-portal", "digital-channels"), Map.entry("mobile-banking-api", "digital-channels"),
 			Map.entry("fraud-engine", "fraud-risk"), Map.entry("kyc-service", "onboarding"),
 			Map.entry("loan-origination", "lending-tech"), Map.entry("treasury-fx", "treasury-it"),
-			Map.entry("insurance-claims", "bancassurance"));
+			Map.entry("insurance-claims", "bancassurance"), Map.entry("SCCObjMgr_enu", "crm-siebel"),
+			Map.entry("EAIObjMgr_enu", "crm-siebel"), Map.entry("WfProcMgr", "crm-siebel"));
 
 	private static final Map<String, Double> DEFAULT_TICKET = Map.of("upi-switch", 1_800.0, "payment-gateway",
 			2_500.0, "card-auth", 3_200.0, "core-banking", 25_000.0, "atm-switch", 4_000.0, "netbanking-portal", 6_000.0,

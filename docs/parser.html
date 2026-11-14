@@ -88,6 +88,7 @@
 						<button class="btn" id="ingestBtn" title="Parse and store in the H2 database">Parse &amp; store</button>
 						<input class="input" id="service" placeholder="Default service (optional)" style="width:220px">
 						<button class="btn small" id="sampleBtn">Load samples</button>
+						<button class="btn small" id="siebelBtn" title="A Siebel CRM object manager log: file header, events and multi-line SQL">Siebel sample</button>
 						<button class="btn small" id="clearBtn">Clear</button>
 						<span class="chip" id="summary">—</span>
 					</div>
@@ -130,12 +131,30 @@
 				'Kafka consumer lag exceeded 50000 on topic ledger.postings - something went wrong'
 			].join('\n');
 
+			// Oracle Siebel CRM component log (tab separated), as found in siebsrvr/enterprises/<ENT>/<SERVER>/log
+			const SIEBEL = [
+				'2021 2026-11-04 13:05:01 0000-00-00 00:00:00 +0530 00000000 001 003f 0001 09 SCCObjMgr_enu 2097155 5360 4940 d:\\siebel\\log\\SCCObjMgr_enu_0020_2097155.log 8.1.1.11 [23030] ENU',
+				'ObjMgrSessionInfo\tObjMgrLogin\t3\t0000000257c41c8c:0\t2026-11-04 13:05:02\tLogin name : AGENT0421',
+				'ServerLog\tProcessCreate\t1\t0000000257c41c8c:0\t2026-11-04 13:05:02\tCreated multithreaded server process (OS pid = 5360) for SCCObjMgr_enu',
+				'SQLParseAndExecute\tStatement\t4\t0000000257c41c8c:0\t2026-11-04 13:05:03\tSELECT statement with ID: 1C2C3D30',
+				'  SELECT /*+ ALL_ROWS */ T1.ROW_ID, T1.SR_NUM, T1.SR_STAT_ID',
+				'  FROM SIEBEL.S_SRV_REQ T1 WHERE T1.OWNER_EMP_ID = :1',
+				'GenericLog\tGenericWarning\t2\t0000000257c41c8c:0\t2026-11-04 13:05:04\tSQL statement took 12.4 seconds for BusComp \'Service Request\'',
+				'GenericLog\tGenericError\t1\t000000025a1c1a24:0\t2026-11-04 13:05:05\t(sstchca.cpp (2096) err=7668017 sys=0) SBL-DAT-00382: The same values for \'Account Name\' already exist. Row 1-7XK2QD',
+				'SQLError\tError\t1\t000000025a1c1a24:0\t2026-11-04 13:05:06\tSBL-DBC-00105: An error has occurred executing a Sql statement.',
+				'[DataDirect][ODBC Oracle Wire Protocol driver][Oracle]ORA-12170: TNS:Connect timeout occurred',
+				'EAITransport\tEAITransportError\t1\t000000025a1c1a24:0\t2026-11-04 13:05:07\tSBL-EAI-04308: Operation \'GetBalance\' of Web Service \'NB CBS Integration\' at port \'CBSPort\' failed with the following explanation: Read timed out',
+				'PrcExec\tPrcExecError\t1\t000000025a1c1a24:0\t2026-11-04 13:05:08\tSBL-BPR-00162: Error invoking service \'EAI Siebel Adapter\', method \'Upsert\' at step \'Sync to CBS\'.',
+				'ServerLog\tProcessExit\t1\t0\t2026-11-04 13:05:09\tSCCObjMgr_enu  5360  TERMINATED  Process 5360 was terminated'
+			].join('\n');
+
 			const $ = (id) => document.getElementById(id);
 			const esc = (s) => s == null ? '' : String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 			const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); };
 
 			$('input').value = SAMPLES;
 			$('sampleBtn').onclick = () => { $('input').value = SAMPLES; };
+			$('siebelBtn').onclick = () => { $('input').value = SIEBEL; $('service').value = ''; run(false); };
 			$('clearBtn').onclick = () => { $('input').value = ''; };
 
 			async function run(store) {

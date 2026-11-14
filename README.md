@@ -220,7 +220,7 @@ Deploy from the `Dockerfile`, set `APP_PASSWORD` (and `DEMO_MODE=true` for a dem
 - **Live BFSI log stream** from 12 services (core banking, UPI switch, card auth, payment gateway, ATM switch,
   net banking, loan origination, KYC, fraud engine, treasury FX, insurance claims, mobile banking).
   Account numbers, cards and VPAs are masked. Traffic follows a banking-hours curve, with random incidents.
-- **Universal log parser** that auto-detects JSON (including nested ECS), Spring Boot, Log4j/Logback, Python logging,
+- **Universal log parser** that auto-detects Oracle Siebel CRM logs, JSON (including nested ECS), Spring Boot, Log4j/Logback, Python logging,
   logfmt, Nginx/Apache access, Apache error, syslog RFC 5424 / RFC 3164, pipe-delimited and bracketed formats,
   plus a generic fallback. Multi-line stack traces are folded into their event, and zoned timestamps are normalised.
 - **Dashboard:** time ranges from 15 minutes to 7 days, and an error trend labelled in real local time (1 PM, 2 PM…).
@@ -240,6 +240,36 @@ Deploy from the `Dockerfile`, set `APP_PASSWORD` (and `DEMO_MODE=true` for a dem
 - **Login & production hardening:** session login with CSRF protection, a 401 for expired API sessions, a public
   health check, the H2 console off in production, a capped Gemini budget, and gzip with long-cached static files.
 - **Demo controls:** pause or resume the live stream, and "Simulate incident".
+
+## Oracle Siebel CRM logs
+
+The parser understands Siebel component, server and web server extension (SWSE) logs, as found under
+`siebsrvr/enterprises/<ENTERPRISE>/<SERVER>/log`:
+
+```
+2021 2026-11-04 13:05:01 0000-00-00 00:00:00 +0530 00000000 001 003f 0001 09 SCCObjMgr_enu 2097155 5360 4940 d:\siebel\log\SCCObjMgr_enu_0020_2097155.log 8.1.1.11 [23030] ENU
+ObjMgrSessionInfo	ObjMgrLogin	3	0000000257c41c8c:0	2026-11-04 13:05:02	Login name : AGENT0421
+SQLError	Error	1	000000025a1c1a24:0	2026-11-04 13:05:06	SBL-DBC-00105: An error has occurred executing a Sql statement.
+[DataDirect][ODBC Oracle Wire Protocol driver][Oracle]ORA-12170: TNS:Connect timeout occurred
+```
+
+- **File header:** the component (e.g. `SCCObjMgr_enu`) becomes the service, the task id the thread, and event times are
+  converted from the header's UTC offset.
+- **Events:** `EventType<TAB>SubType<TAB>Severity<TAB>SARM ID<TAB>Timestamp<TAB>Message`. Tabs or runs of spaces are both
+  accepted. The SARM ID is stored as the trace ID, so all events of one user request are linked.
+- **Levels:** severity 0-5 maps to FATAL / ERROR / WARN / INFO / DEBUG / TRACE. Siebel writes routine server events
+  (ProcessCreate, LstnObjCreate…) at level 1, so 0-1 only count as errors when the event type or text says so: an
+  `SBL-xxx-nnnnn` code, `err=`, `ORA-`, "failed", "terminated" and similar. "was terminated", "crash" and "core dump" are FATAL.
+- **Multi-line events:** SQL statements, bind variables and ODBC driver messages stay with the event they belong to.
+- **Categories:** Siebel Database Connector (SBL-DBC), EAI & Integration (SBL-EAI), Workflow (SBL-BPR / SBL-OMS),
+  Server & Components (SBL-SVR / SMI / NET, crashes), Login & Security (SBL-SEC), Data Validation (SBL-DAT), and
+  other SBL errors.
+- **Analysis:** error patterns keep `SBL-` and `ORA-` codes and mask Siebel row ids (`1-ABC123`). Entities include
+  Siebel error codes, row ids and object names (business services, business components, web services, workflows).
+  The playbook has Siebel-specific root causes and recovery steps.
+
+The Parser page has a **Siebel sample** button, and the simulator includes three Siebel components (Call Center and EAI
+object managers, Workflow Process Manager).
 
 ## AI error analysis (Google Gemini + NLP)
 

@@ -72,6 +72,20 @@ public class UniversalLogParser {
 	private static final Pattern SYSLOG_3164 = Pattern.compile(
 			"^(?:<(\\d{1,3})>)?([A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2})\\s+(\\S+)\\s+([\\w./-]+?)(?:\\[(\\d+)\\])?:\\s+(.*)$");
 
+	// ---------- Oracle Siebel CRM ----------
+	// Component / server / SWSE logs: EventType<TAB>SubType<TAB>Severity<TAB>SARM-ID<TAB>yyyy-MM-dd HH:mm:ss<TAB>Message
+	private static final String SB_SEP = "(?:\\t+|\\s{2,})";
+	private static final Pattern SIEBEL_EVENT = Pattern.compile("^([A-Za-z][\\w]*)" + SB_SEP + "([A-Za-z][\\w]*)" + SB_SEP
+			+ "([0-5])" + SB_SEP + "(\\S+)" + SB_SEP + "(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})(?:\\s+(.*))?$", Pattern.DOTALL);
+	// First line of every Siebel log file, e.g.
+	// 2021 2024-03-04 10:12:22 0000-00-00 00:00:00 +0530 00000000 001 003f 0001 09 SCCObjMgr_enu 2097155 5360 4940 d:\siebel\log\SCCObjMgr_enu_0020_2097155.log 8.1.1.11 [23030] ENU
+	private static final Pattern SIEBEL_HEADER = Pattern.compile("^\\d+\\s+(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})\\s+"
+			+ "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\s+([+-]\\d{4})\\s+(?:\\S+\\s+){5}([A-Za-z][\\w]*)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\S+)\\s*(.*)$");
+	private static final Pattern SIEBEL_ERR = Pattern.compile(
+			"(?i)\\bSBL-[A-Z]{3}-\\d{5}\\b|\\berr=\\d+|\\berror\\b|\\bfail|exception|\\bcrash|terminated|\\babort|unable to|timed? ?out|\\bORA-\\d{5}\\b|\\[ODBC|core dump|segmentation");
+	private static final Pattern SIEBEL_FATAL = Pattern.compile("(?i)\\bcrash|core dump|segmentation|\\bfatal\\b|was terminated|access violation");
+	private static final Pattern STARTS_LIKE_EVENT = Pattern.compile("^(?:" + TS_ANY + "|\\{|<\\d|\\[\\w{3} )");
+
 	private static final Pattern LOGFMT_PAIR = Pattern.compile("([A-Za-z_@][\\w.@-]*)=(\"(?:[^\"\\\\]|\\\\.)*\"|\\S*)");
 
 	// ---------- extraction helpers ----------
@@ -111,16 +125,33 @@ public class UniversalLogParser {
 			return out;
 		}
 		ParsedLog current = null;
+		SiebelContext siebel = null;
 		for (String line : text.split("\\r?\\n")) {
 			if (line.isBlank()) {
+				continue;
+			}
+			String stripped = line.strip();
+			Matcher header = SIEBEL_HEADER.matcher(stripped);
+			if (header.matches()) { // a new Siebel log file starts: remember its component and time zone
+				siebel = new SiebelContext(header.group(3), header.group(4), header.group(5), parseOffset(header.group(2)));
+				current = siebelHeader(header, siebel, stripped);
+				out.add(current);
+				continue;
+			}
+			if (current != null && current.getFormat() == LogFormat.SIEBEL && !SIEBEL_EVENT.matcher(stripped).matches()
+					&& !STARTS_LIKE_EVENT.matcher(stripped).find()) {
+				current.appendContinuation(line.stripTrailing()); // SQL statements, bind variables, wrapped messages
 				continue;
 			}
 			if (current != null && CONTINUATION.matcher(line).find()) {
 				current.appendContinuation(line.stripTrailing());
 				continue;
 			}
-			current = parseLine(line, defaultService).orElse(null);
+			current = parseLine(line, siebel != null ? siebel.component() : defaultService).orElse(null);
 			if (current != null) {
+				if (current.getFormat() == LogFormat.SIEBEL && siebel != null) {
+					current.timestamp(siebel.toLocal(current.getTimestamp())).thread("task " + siebel.task());
+				}
 				out.add(current);
 			}
 		}
@@ -134,6 +165,7 @@ public class UniversalLogParser {
 		}
 		String line = rawLine.strip();
 		ParsedLog p = tryJson(line);
+		if (p == null) p = trySiebel(line);
 		if (p == null) p = trySpringBoot(line);
 		if (p == null) p = tryBracketed(line);
 		if (p == null) p = tryLog4j(line);
@@ -181,6 +213,66 @@ public class UniversalLogParser {
 				.traceId(str(first(flat, "traceid", "trace_id", "trace.id", "requestid", "request_id", "correlationid",
 						"correlation_id", "txnid", "x-request-id")))
 				.clientIp(str(first(flat, "client_ip", "clientip", "ip", "remote_addr", "client.ip", "source.ip")));
+	}
+
+	/** Oracle Siebel CRM event line. Severity 0-5 plus the event type decide the level (see {@link #siebelLevel}). */
+	private ParsedLog trySiebel(String line) {
+		Matcher m = SIEBEL_EVENT.matcher(line);
+		if (!m.matches()) {
+			return null;
+		}
+		String type = m.group(1), sub = m.group(2), sarm = m.group(4);
+		String msg = m.group(6) == null ? "" : m.group(6).strip();
+		return new ParsedLog().format(LogFormat.SIEBEL).timestamp(parseTimestamp(m.group(5)))
+				.level(siebelLevel(type, sub, Integer.parseInt(m.group(3)), msg)).logger(type + "." + sub)
+				.traceId("0".equals(sarm) ? null : sarm).message(msg.isEmpty() ? type + " " + sub : msg);
+	}
+
+	/**
+	 * Siebel writes the level at which an event type is logged, not how bad it was: server events such as
+	 * ProcessCreate are logged at 1 ("errors") although they are routine. So severity 0-1 counts as an error
+	 * only when the event or its text says so (SBL-xxx-nnnnn codes, err=, ORA-, failed, terminated...).
+	 */
+	static String siebelLevel(String type, String sub, int severity, String msg) {
+		String kind = type + " " + sub;
+		boolean namedError = kind.contains("Error") || kind.contains("Fatal");
+		boolean errorText = SIEBEL_ERR.matcher(msg).find();
+		if (SIEBEL_FATAL.matcher(msg).find() && (severity <= 1 || namedError)) return "FATAL";
+		if (kind.contains("Fatal")) return "FATAL";
+		if (namedError) return "ERROR";
+		return switch (severity) {
+		case 0 -> errorText ? "FATAL" : "INFO";
+		case 1 -> errorText ? "ERROR" : "INFO";
+		case 2 -> "WARN";
+		case 3 -> "INFO";
+		case 4 -> "DEBUG";
+		default -> "TRACE";
+		};
+	}
+
+	private ParsedLog siebelHeader(Matcher h, SiebelContext ctx, String line) {
+		String version = h.group(8).isBlank() ? "" : " · Siebel " + h.group(8).strip();
+		return new ParsedLog().format(LogFormat.SIEBEL).timestamp(ctx.toLocal(parseTimestamp(h.group(1)))).level("INFO")
+				.service(ctx.component()).thread("task " + ctx.task()).logger("SiebelLogHeader")
+				.message("Log opened: " + ctx.component() + " task " + ctx.task() + " (pid " + h.group(5) + ", thread "
+						+ h.group(6) + ")" + version + " · " + h.group(7))
+				.rawLine(line);
+	}
+
+	/** Component, task and UTC offset from a Siebel log header; event times are converted with that offset. */
+	private record SiebelContext(String component, String task, String pid, java.time.ZoneOffset offset) {
+		LocalDateTime toLocal(LocalDateTime t) {
+			if (t == null || offset == null) return t;
+			return t.atOffset(offset).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
+		}
+	}
+
+	private static java.time.ZoneOffset parseOffset(String s) {
+		try {
+			return java.time.ZoneOffset.of(s.substring(0, 3) + ":" + s.substring(3));
+		} catch (RuntimeException e) {
+			return null;
+		}
 	}
 
 	private ParsedLog trySpringBoot(String line) {

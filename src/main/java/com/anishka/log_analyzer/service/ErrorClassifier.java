@@ -20,6 +20,15 @@ public class ErrorClassifier {
 	private static final Map<String, List<String>> RULES = new LinkedHashMap<>();
 
 	static {
+		// Oracle Siebel CRM: SBL-<area>-<number> error codes identify the failing layer
+		RULES.put("Siebel Database Connector", List.of("sbl-dbc-", "sqlerror", "[odbc"));
+		RULES.put("Siebel EAI & Integration", List.of("sbl-eai-", "eaitransport", "eaiobjmgr", "web service '"));
+		RULES.put("Siebel Workflow", List.of("sbl-bpr-", "sbl-oms-", "workflow process", "wfprocmgr"));
+		RULES.put("Siebel Server & Components", List.of("sbl-svr-", "sbl-smi-", "sbl-scm-", "sbl-osd-", "sbl-net-", "sisnapi",
+				"scbroker", "was terminated", "core dump", "srbroker"));
+		RULES.put("Siebel Login & Security", List.of("sbl-sec-", "sbl-ssa-", "security adapter"));
+		RULES.put("Siebel Data Validation", List.of("sbl-dat-", "sbl-exl-"));
+		RULES.put("Siebel Application Errors", List.of("sbl-"));
 		RULES.put("Fraud & Risk Alerts", List.of("fraud", "velocity", "risk score", "aml ", "aml-", "sanctions screening", "sanctions list",
 				"suspicious", "blacklist", "mule account", "chargeback"));
 		RULES.put("Database Issues", List.of("database", "jdbc", "sql", "deadlock", "connection pool", "hikari",

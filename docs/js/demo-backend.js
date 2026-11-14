@@ -82,6 +82,8 @@
 			case 'code': return digits(6);
 			case 'sess': return hex(12);
 			case 'ip': return ip();
+			case 'row': return (1 + int(3)) + '-' + Array.from({ length: 6 }, () => '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ'[int(34)]).join(''); // Siebel row id
+			case 'pid': return String(3000 + int(25000));
 			default: return '{' + key + '}';
 		}
 	}
@@ -131,6 +133,11 @@
 			case 'PYTHON': return `${log4jTs(ts)} - ${p.name} - ${level === 'WARN' ? 'WARNING' : level === 'FATAL' ? 'CRITICAL' : level} - ${text}`;
 			case 'SYSLOG_RFC5424': return `<${16 * 8 + syslogSeverity(level)}>1 ${isoOffset(ts)} ${host} ${p.name} ${3300 + int(50)} - - ${text}`;
 			case 'PIPE_DELIMITED': return `${pipeTs(ts)} | ${level} | ${p.name} | ${text}`;
+			case 'SIEBEL': { // EventType, SubType, severity, SARM id, timestamp, message: tab separated
+				const [type, sub] = (logger && logger.includes('.') ? logger : 'GenericLog.GenericInfo').split('.');
+				const sev = { FATAL: 0, ERROR: 1, WARN: 2, DEBUG: 4 }[level] ?? 3;
+				return `${type}\t${sub}\t${sev}\t${hex(16)}:0\t${log4jTs(ts).slice(0, 19)}\t${text}`;
+			}
 			default: return `${dmyTs(ts)} ${shortLevel(level)} ${text}`;
 		}
 	}
@@ -182,7 +189,13 @@
 		leadingLevel: new RegExp('^\\[?(' + LEVEL + ')\\]?[:\\s]+(.*)$', 's'),
 		traceId: /\b(?:trace[_-]?id|request[_-]?id|req[_-]?id|correlation[_-]?id|txn[_-]?id|x-request-id|rrn)\s*[=:]\s*"?([\w-]{6,64})/i,
 		ipv4: /\b((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})\b/,
-		continuation: /^(?:\s+at\s|\s+\.\.\.\s*\d+\s+more|Caused by:|\s{2,}\S|\t)/
+		continuation: /^(?:\s+at\s|\s+\.\.\.\s*\d+\s+more|Caused by:|\s{2,}\S|\t)/,
+		// Oracle Siebel CRM
+		siebelEvent: /^([A-Za-z]\w*)(?:\t+|\s{2,})([A-Za-z]\w*)(?:\t+|\s{2,})([0-5])(?:\t+|\s{2,})(\S+)(?:\t+|\s{2,})(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\s+([\s\S]*))?$/,
+		siebelHeader: /^\d+\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+([+-]\d{4})\s+(?:\S+\s+){5}([A-Za-z]\w*)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s*(.*)$/,
+		siebelErr: /\bSBL-[A-Z]{3}-\d{5}\b|\berr=\d+|\berror\b|\bfail|exception|\bcrash|terminated|\babort|unable to|timed? ?out|\bORA-\d{5}\b|\[ODBC|core dump|segmentation/i,
+		siebelFatal: /\bcrash|core dump|segmentation|\bfatal\b|was terminated|access violation/i,
+		startsLikeEvent: new RegExp('^(?:' + TS_ANY + '|\\{|<\\d|\\[\\w{3} )')
 	};
 
 	function normalizeLevel(raw) {
@@ -326,6 +339,11 @@
 		if (rawLine == null || rawLine.trim() === '') return null;
 		const line = rawLine.trim();
 		let p = tryJson(line), m;
+		if (!p && (m = line.match(R.siebelEvent))) {
+			const msg = (m[6] || '').trim();
+			p = rec('SIEBEL', { timestamp: parseTimestamp(m[5]), level: siebelLevel(m[1], m[2], Number(m[3]), msg), logger: m[1] + '.' + m[2],
+				traceId: m[4] === '0' ? null : m[4], message: msg || m[1] + ' ' + m[2] });
+		}
 		if (!p && (m = line.match(R.spring))) p = rec('SPRING_BOOT', { timestamp: parseTimestamp(m[1]), level: normalizeLevel(m[2]), service: m[4], thread: m[5], logger: m[6], message: m[7] });
 		if (!p && (m = line.match(R.bracketed))) p = rec('BRACKETED', { timestamp: parseTimestamp(m[1]), level: normalizeLevel(m[2]), service: m[3], traceId: m[4], clientIp: m[5], message: m[6] });
 		if (!p && (m = line.match(R.log4jLevelFirst))) p = rec('LOG4J', { timestamp: parseTimestamp(m[1]), level: normalizeLevel(m[2]), thread: m[3], logger: m[4], message: m[5] });
@@ -379,18 +397,55 @@
 		return p;
 	}
 
+	/** Siebel logs the level an event type is written at, not how bad it was (see UniversalLogParser.siebelLevel). */
+	function siebelLevel(type, sub, severity, msg) {
+		const kind = type + ' ' + sub, named = /Error|Fatal/.test(kind), errText = R.siebelErr.test(msg);
+		if (R.siebelFatal.test(msg) && (severity <= 1 || named)) return 'FATAL';
+		if (kind.includes('Fatal')) return 'FATAL';
+		if (named) return 'ERROR';
+		return [errText ? 'FATAL' : 'INFO', errText ? 'ERROR' : 'INFO', 'WARN', 'INFO', 'DEBUG', 'TRACE'][severity];
+	}
+	/** Event time written at a +hhmm offset, as epoch ms. */
+	function atOffset(ts, off) {
+		const m = ts.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+		const mins = (off[0] === '-' ? -1 : 1) * (Number(off.slice(1, 3)) * 60 + Number(off.slice(3, 5)));
+		return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - mins * MIN;
+	}
+
 	function parseText(text, defaultService) {
 		const out = [];
-		let current = null;
+		let current = null, siebel = null;
 		for (const line of String(text || '').split(/\r?\n/)) {
 			if (line.trim() === '') continue;
+			const st = line.trim();
+			const h = st.match(R.siebelHeader);
+			if (h) { // a Siebel log file starts: remember its component, task and offset
+				siebel = { component: h[3], task: h[4], offset: h[2] };
+				current = rec('SIEBEL', { timestamp: atOffset(h[1], h[2]), level: 'INFO', service: h[3], thread: 'task ' + h[4], logger: 'SiebelLogHeader',
+					message: `Log opened: ${h[3]} task ${h[4]} (pid ${h[5]}, thread ${h[6]})${h[8].trim() ? ' · Siebel ' + h[8].trim() : ''} · ${h[7]}` });
+				current.rawLine = st; current.clientIp = null; current.traceId = null; current.host = null;
+				out.push(current);
+				continue;
+			}
+			if (current && current.format === 'SIEBEL' && !R.siebelEvent.test(st) && !R.startsLikeEvent.test(st)) {
+				current.message += '\n' + line.trimEnd(); // SQL statements, bind variables, driver messages
+				current.rawLine += '\n' + line.trimEnd();
+				continue;
+			}
 			if (current && R.continuation.test(line)) {
 				current.message += '\n' + line.trimEnd();
 				current.rawLine += '\n' + line.trimEnd();
 				continue;
 			}
-			current = parseLine(line, defaultService);
-			if (current) out.push(current);
+			current = parseLine(line, siebel ? siebel.component : defaultService);
+			if (current) {
+				if (current.format === 'SIEBEL' && siebel) {
+					const t = st.match(R.siebelEvent);
+					if (t) current.timestamp = atOffset(t[5], siebel.offset);
+					current.thread = 'task ' + siebel.task;
+				}
+				out.push(current);
+			}
 		}
 		return out;
 	}
@@ -647,12 +702,13 @@
 		[/\b[0-9]?X{6,}\d{4}\b/g, '<MASKED>'],
 		[/\b(?:INR|USD|EUR|GBP)\s?[\d,]+(?:\.\d+)?\b/g, '<AMOUNT>'],
 		[/\b(?!ISO8583\b)[A-Z]{2,6}\d{4,}\b/g, '<ID>'],
+		[/\b\d{1,3}-(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,9}\b/g, '<ROWID>'],
 		[/\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,}\b/g, '<HEX>'],
-		[/(?<!HTTP )\b\d+(?:[.,]\d+)*(ms|s|m|h|%)?\b/g, '<NUM>$1']
+		[/(?<!HTTP )(?<!SBL-[A-Z]{3}-)(?<!ORA-)\b\d+(?:[.,]\d+)*(ms|s|m|h|%)?\b/g, '<NUM>$1']
 	];
 	const ENTITIES = [
 		['exception', /\b(?:[a-z]+\.)*([A-Z][A-Za-z]+(?:Exception|Error))\b/g],
-		['errorCode', /\b(ORA-\d{5}|HTTP \d{3}|RespCode \w+|AH\d{5}|U\d{2}\b|code \d{2,3}|MT\d{3}|ISO ?8583)/g],
+		['errorCode', /\b(SBL-[A-Z]{3}-\d{5}|ORA-\d{5}|HTTP \d{3}|RespCode \w+|AH\d{5}|U\d{2}\b|code \d{2,3}|MT\d{3}|ISO ?8583)/g],
 		['transaction', /\b((?:TXN|NOVA|ORD|RRN)\d{8,})\b/g],
 		['reference', /\b((?:LA|APP|CLM|POL|FX|FD|SI|VK|MID|CIF|ATM)\d{4,})\b/g],
 		['account', /\b(X{6,}\d{4})\b/g],
@@ -660,6 +716,8 @@
 		['vpa', /\b([a-z]\*{2,}\d*@[a-z]+)\b/g],
 		['duration', /\b(\d+ ?ms)\b/g],
 		['amount', /\b((?:INR|USD) ?[\d,]+(?:\.\d+)?)\b/g],
+		['siebelObject', /(?:Business Service|BusComp|Business Component|Workflow Process|Web Service|Integration Object|Applet|View) '([^']{2,80})'/g],
+		['rowId', /\b(\d{1,3}-(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,9})\b/g],
 		['table', /\b([A-Z][A-Z0-9]*_[A-Z0-9_]{2,})\b/g]
 	];
 	const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'for', 'to', 'of', 'in', 'on', 'at', 'by', 'is', 'was', 'be', 'with', 'from', 'after', 'as', 'it', 'this', 'that', 'not', 'no', 'via', 'id', 'num', 'uuid', 'hex', 'masked', 'amount', 'ip', 'vpa', 'email', 'ms', 'while', 'during', 'into', 'than']);

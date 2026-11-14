@@ -40,15 +40,17 @@ public class LogNlpService {
 			new Object[] { Pattern.compile("\\b(?:INR|USD|EUR|GBP)\\s?[\\d,]+(?:\\.\\d+)?\\b"), "<AMOUNT>" },
 			// identifiers, but not protocol names that carry meaning (ISO8583)
 			new Object[] { Pattern.compile("\\b(?!ISO8583\\b)[A-Z]{2,6}\\d{4,}\\b"), "<ID>" },
+			// Siebel row ids such as 1-ABC123 (but never SBL-DAT-00498 error codes, which are kept as signal)
+			new Object[] { Pattern.compile("\\b\\d{1,3}-(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,9}\\b"), "<ROWID>" },
 			new Object[] { Pattern.compile("\\b(?=[0-9a-f]*\\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,}\\b"), "<HEX>" },
 			// numbers, but keep HTTP status codes (502 vs 503 matters)
-			new Object[] { Pattern.compile("(?<!HTTP )\\b\\d+(?:[.,]\\d+)*(ms|s|m|h|%)?\\b"), "<NUM>$1" });
+			new Object[] { Pattern.compile("(?<!HTTP )(?<!SBL-[A-Z]{3}-)(?<!ORA-)\\b\\d+(?:[.,]\\d+)*(ms|s|m|h|%)?\\b"), "<NUM>$1" });
 
 	// ---------- entity patterns ----------
 	private static final Map<String, Pattern> ENTITIES = new LinkedHashMap<>();
 	static {
 		ENTITIES.put("exception", Pattern.compile("\\b(?:[a-z]+\\.)*([A-Z][A-Za-z]+(?:Exception|Error))\\b"));
-		ENTITIES.put("errorCode", Pattern.compile("\\b(ORA-\\d{5}|HTTP \\d{3}|RespCode \\w+|AH\\d{5}|U\\d{2}\\b|code \\d{2,3}|MT\\d{3}|ISO ?8583)"));
+		ENTITIES.put("errorCode", Pattern.compile("\\b(SBL-[A-Z]{3}-\\d{5}|ORA-\\d{5}|HTTP \\d{3}|RespCode \\w+|AH\\d{5}|U\\d{2}\\b|code \\d{2,3}|MT\\d{3}|ISO ?8583)"));
 		ENTITIES.put("transaction", Pattern.compile("\\b((?:TXN|NOVA|ORD|RRN)\\d{8,})\\b"));
 		ENTITIES.put("reference", Pattern.compile("\\b((?:LA|APP|CLM|POL|FX|FD|SI|VK|MID|CIF|ATM)\\d{4,})\\b"));
 		ENTITIES.put("account", Pattern.compile("\\b(X{6,}\\d{4})\\b"));
@@ -56,6 +58,8 @@ public class LogNlpService {
 		ENTITIES.put("vpa", Pattern.compile("\\b([a-z]\\*{2,}\\d*@[a-z]+)\\b"));
 		ENTITIES.put("duration", Pattern.compile("\\b(\\d+ ?ms)\\b"));
 		ENTITIES.put("amount", Pattern.compile("\\b((?:INR|USD) ?[\\d,]+(?:\\.\\d+)?)\\b"));
+		ENTITIES.put("siebelObject", Pattern.compile("(?:Business Service|BusComp|Business Component|Workflow Process|Web Service|Integration Object|Applet|View) '([^']{2,80})'"));
+		ENTITIES.put("rowId", Pattern.compile("\\b(\\d{1,3}-(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,9})\\b"));
 		ENTITIES.put("table", Pattern.compile("\\b([A-Z][A-Z0-9]*_[A-Z0-9_]{2,})\\b"));
 	}
 

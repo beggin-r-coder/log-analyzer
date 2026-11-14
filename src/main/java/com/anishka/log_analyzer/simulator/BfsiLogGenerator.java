@@ -45,6 +45,7 @@ public class BfsiLogGenerator {
 	private static final DateTimeFormatter ISO_MILLIS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
 	private static final DateTimeFormatter LOG4J_TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss,SSS");
 	private static final DateTimeFormatter PIPE_TS = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss.SSS");
+	private static final DateTimeFormatter SIEBEL_TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 	private static final DateTimeFormatter DMY_TS = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
 	private static final DateTimeFormatter ACCESS_TS = DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss Z",
 			Locale.ENGLISH);
@@ -155,8 +156,22 @@ public class BfsiLogGenerator {
 		case SYSLOG_RFC5424 -> String.format("<%d>1 %s %s %s %d - - %s", 16 * 8 + syslogSeverity(level),
 				zts.format(ISO_MILLIS_OFFSET), host, p.name(), 3300 + rnd.nextInt(50), text);
 		case PIPE_DELIMITED -> String.format("%s | %s | %s | %s", ts.format(PIPE_TS), level, p.name(), text);
+		case SIEBEL -> siebelLine(ts, level, text, logger, rnd);
 		default -> String.format("%s %s %s", ts.format(DMY_TS), shortLevel(level), text);
 		};
+	}
+
+	/** Siebel component log event: EventType, SubType, severity, SARM id, timestamp and message, tab separated. */
+	private static String siebelLine(LocalDateTime ts, String level, String text, String logger, Random rnd) {
+		String[] kind = (logger == null || !logger.contains(".") ? "GenericLog.GenericInfo" : logger).split("\\.", 2);
+		int severity = switch (level) {
+		case "FATAL" -> 0;
+		case "ERROR" -> 1;
+		case "WARN" -> 2;
+		case "DEBUG" -> 4;
+		default -> 3;
+		};
+		return kind[0] + "\t" + kind[1] + "\t" + severity + "\t" + hex(rnd, 16) + ":0\t" + ts.format(SIEBEL_TS) + "\t" + text;
 	}
 
 	private String toJson(Profile p, ZonedDateTime zts, String level, String text, String logger, String trace,
@@ -276,6 +291,8 @@ public class BfsiLogGenerator {
 		case "order" -> "ORD" + digits(r, 10);
 		case "ifsc" -> "NOVA000" + digits(r, 4);
 		case "atm" -> "ATM" + digits(r, 5);
+		case "row" -> (1 + r.nextInt(3)) + "-" + alnum(r, 6); // Siebel row id, e.g. 1-7XK2QD
+		case "pid" -> String.valueOf(3000 + r.nextInt(25000));
 		case "n" -> String.valueOf(5 + r.nextInt(60));
 		case "big" -> String.format("%,d", 1000 + r.nextInt(90000));
 		case "score" -> String.valueOf(300 + r.nextInt(600));
@@ -297,6 +314,12 @@ public class BfsiLogGenerator {
 		if (x < 0.6) return 50 + r.nextDouble() * 5_000;
 		if (x < 0.9) return 5_000 + r.nextDouble() * 95_000;
 		return 100_000 + r.nextDouble() * 1_900_000;
+	}
+
+	private static String alnum(Random r, int n) {
+		StringBuilder sb = new StringBuilder(n);
+		for (int i = 0; i < n; i++) sb.append("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".charAt(r.nextInt(34)));
+		return sb.toString();
 	}
 
 	private static String digits(Random r, int n) {
@@ -476,6 +499,37 @@ public class BfsiLogGenerator {
 						List.of(new Msg("JWT validation failed: token expired for session {sess}", "com.novabank.mb.security.JwtFilter"),
 								new Msg("Push notification vendor returned HTTP 503", "com.novabank.mb.notify.PushClient")),
 						List.of(),
-						List.of(new Msg("Authentication service unavailable: login failed for CIF{cif}", "com.novabank.mb.AuthController"))));
+						List.of(new Msg("Authentication service unavailable: login failed for CIF{cif}", "com.novabank.mb.AuthController"))),
+
+				// ---------- Oracle Siebel CRM (contact centre / branch CRM) ----------
+				new Profile("SCCObjMgr_enu", LogFormat.SIEBEL, 6, "siebel-app",
+						List.of(new Msg("Login name : AGENT{n}", "ObjMgrSessionInfo.ObjMgrLogin"),
+								new Msg("BusComp 'Service Request' WriteRecord completed for row {row}", "ObjMgrBusCompLog.Write"),
+								new Msg("Begin: Business Service 'NB Customer 360' invoke method: 'GetProfile' for CIF{cif}", "ObjMgrBusServiceLog.InvokeMethod"),
+								new Msg("View 'All Service Request List View' rendered in {ms}ms", "EventContext.EvtCtxView")),
+						List.of(new Msg("SQL statement took {slowms}ms for BusComp 'Service Request' (threshold 800ms)", "ObjMgrSqlLog.Warning"),
+								new Msg("Session for AGENT{n} timed out after 1800 seconds of inactivity", "ObjMgrSessionInfo.SessionTimeout")),
+						List.of(new Msg("(sstchca.cpp (2096) err=7668017 sys=0) SBL-DAT-00382: The same values for 'Account Name' already exist. Row {row}", "GenericLog.GenericError"),
+								new Msg("SBL-DBC-00105: An error has occurred executing a Sql statement. ORA-00060: deadlock detected while waiting for resource", "SQLError.Error")),
+						List.of(new Msg("SCCObjMgr_enu  {pid}  TERMINATED  Process {pid} was terminated", "ServerLog.ProcessExit")),
+						List.of(new Msg("SBL-DBC-00105: An error has occurred executing a Sql statement. [Oracle]ORA-12170: TNS:Connect timeout occurred", "SQLError.Error"),
+								new Msg("SBL-DBC-00111: An error has occurred writing to a record. [Oracle]ORA-12170: TNS:Connect timeout occurred", "SQLError.Error"))),
+
+				new Profile("EAIObjMgr_enu", LogFormat.SIEBEL, 4, "siebel-eai",
+						List.of(new Msg("Begin: Business Service 'EAI Siebel Adapter' invoke method: 'Upsert' for Account {row}", "ObjMgrBusServiceLog.InvokeMethod"),
+								new Msg("Inbound web service 'NB CBS Account Sync' request processed in {ms}ms", "EAITransport.EAITransportDebug"),
+								new Msg("Outbound call to Web Service 'NB CBS Integration' operation 'GetBalance' completed in {ms}ms", "EAITransport.EAITransportDebug")),
+						List.of(new Msg("Retrying outbound call to Web Service 'NB CBS Integration' (attempt 2 of 3)", "EAITransport.EAITransportWarning")),
+						List.of(new Msg("SBL-EAI-04308: Operation 'CreateCustomer' of Web Service 'NB CBS Integration' at port 'CBSPort' failed with the following explanation: HTTP 503 Service Unavailable", "EAITransport.EAITransportError")),
+						List.of(),
+						List.of(new Msg("SBL-EAI-04308: Operation 'GetBalance' of Web Service 'NB CBS Integration' at port 'CBSPort' failed with the following explanation: Read timed out", "EAITransport.EAITransportError"))),
+
+				new Profile("WfProcMgr", LogFormat.SIEBEL, 3, "siebel-wf",
+						List.of(new Msg("Workflow process 'NB Lead Assignment' instance {row} completed in {ms}ms", "PrcExec.ProcessComplete"),
+								new Msg("Workflow process 'NB SR Escalation' started for Service Request {row}", "PrcExec.ProcessStart")),
+						List.of(new Msg("Workflow process 'NB SR Escalation' waiting on step 'Get Approval' for {n} minutes", "PrcExec.StepWarning")),
+						List.of(new Msg("SBL-BPR-00162: Error invoking service 'NB Lead Assignment Service', method 'Assign' at step 'Assign Lead'.", "PrcExec.PrcExecError")),
+						List.of(),
+						List.of(new Msg("SBL-BPR-00162: Error invoking service 'EAI Siebel Adapter', method 'Upsert' at step 'Sync to CBS'.", "PrcExec.PrcExecError"))));
 	}
 }

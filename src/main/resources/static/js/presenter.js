@@ -393,7 +393,7 @@
 					<span class="pm-chip rv" style="--d:1700"><i></i><b>12</b> core banking services</span>
 					<span class="pm-chip rv" style="--d:1850"><b data-count="${M.perDay}" data-fmt="short">0</b> events / day</span>
 					<span class="pm-chip rv" style="--d:2000"><b data-count="${M.perMin}">0</b> events / min at peak</span>
-					<span class="pm-chip rv" style="--d:2150"><b>12</b> log formats understood</span>
+					<span class="pm-chip rv" style="--d:2150"><b>13</b> log formats, incl. Siebel CRM</span>
 				</div></div>`,
 			enter(el) { countAll(el, 2000); }
 		},
@@ -404,7 +404,7 @@
 				<div>
 					<div class="pm-kicker rv" style="--d:0">Every single day</div>
 					<div class="pm-num rv" style="--d:150"><span data-count="${M.perDay}">0</span></div>
-					<div class="pm-h3 rv" style="--d:300;margin-top:14px;color:#cfd5e6">log lines from 12 services, in 12 formats</div>
+					<div class="pm-h3 rv" style="--d:300;margin-top:14px;color:#cfd5e6">log lines from 12 services, in 13 formats</div>
 					<div class="pm-pains">
 						<div class="pm-pain rv from-l" style="--d:900">${ICON.eye}Failures hide in the noise</div>
 						<div class="pm-pain rv from-l" style="--d:1150">${ICON.phone}Teams find out from customers, 20+ minutes late</div>
@@ -605,7 +605,7 @@
 			id: 'value', chapter: 'Why it matters', dur: 13000, cam: 'hidden', ambient: 1,
 			caption: () => 'From log line to business decision, in one place: universal parsing, live streaming, incidents, business impact, root-cause analysis and executive reports.',
 			html: () => {
-				const f = [['parse', 'Universal parser', '12 log formats auto-detected, stack traces folded'], ['live', 'Live stream', 'Every event on screen the moment it is stored'],
+				const f = [['parse', 'Universal parser', '13 log formats incl. Siebel CRM, auto-detected'], ['live', 'Live stream', 'Every event on screen the moment it is stored'],
 					['bell', 'Incident workflow', 'Alert rules, on-call routing, acknowledge, resolve'], ['rupee', 'Business impact & SLA', 'Money at risk, customers, error budgets'],
 					['brain', 'Root-cause analysis', 'NLP patterns, change correlation, BFSI playbook'], ['doc', 'Executive reports', 'One-click multi-page PDF for leadership']];
 				return `<div class="pm-value" style="display:flex;flex-direction:column;align-items:center">
