@@ -53,9 +53,10 @@ jobs:
           # a small launcher compiled with the C# compiler that comes with Windows, with the app appended to it
           $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
           "static class AppVersion { public const string Value = `"$env:APP_VERSION`"; }" | Set-Content target/AppVersion.cs
-          & $csc /nologo /optimize+ /target:winexe /out:target/launcher.exe /win32icon:packaging/windows/LogAnalyzer.ico `
+          # csc.exe reads "/" as the start of an option, so paths use backslashes
+          & $csc /nologo /optimize+ /target:winexe /out:target\launcher.exe /win32icon:packaging\windows\LogAnalyzer.ico `
             /r:System.IO.Compression.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll `
-            packaging/windows/launcher/Launcher.cs target/AppVersion.cs
+            packaging\windows\launcher\Launcher.cs target\AppVersion.cs
           if ($LASTEXITCODE -ne 0) { throw 'The launcher did not compile' }
 
           $zip = "dist/LogAnalyzer-$env:APP_VERSION-portable.zip"
