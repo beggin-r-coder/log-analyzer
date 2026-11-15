@@ -77,6 +77,7 @@
 		const grid = viewEl(v.id).querySelector('.grid');
 		v.widgets.forEach((w) => { const el = document.querySelector(`[data-widget="${w}"]`); if (el) grid.appendChild(el); });
 	});
+	if (window.LA && window.LA.applyLayout) window.LA.applyLayout(); // the user's own order and sizes within each screen
 	const src = $('sourcesView');
 	if (src) viewEl('sources').appendChild(src);
 	buildSettings(viewEl('settings'));

@@ -974,10 +974,12 @@
 				const known = new Set(DEFAULT_ORDER);
 				const order = saved.order.filter((id) => known.has(id));
 				DEFAULT_ORDER.forEach((id) => { if (!order.includes(id)) order.splice(DEFAULT_ORDER.indexOf(id), 0, id); });
-				return { order, hidden: new Set((saved.hidden || []).filter((id) => known.has(id))) };
+				const sizes = {};
+				Object.entries(saved.sizes || {}).forEach(([id, s]) => { if (known.has(id) && s) sizes[id] = { w: s.w || null, h: s.h || null }; });
+				return { order, hidden: new Set((saved.hidden || []).filter((id) => known.has(id))), sizes };
 			}
 		} catch (e) { /* fall through */ }
-		return { order: [...DEFAULT_ORDER], hidden: new Set(DEFAULT_HIDDEN) };
+		return { order: [...DEFAULT_ORDER], hidden: new Set(DEFAULT_HIDDEN), sizes: {} };
 	})();
 
 	const widgetEl = (id) => document.querySelector(`[data-widget="${id}"]`);
@@ -991,7 +993,7 @@
 	const visibleWidgets = () => layout.order.filter((id) => !layout.hidden.has(id));
 
 	function saveLayout() {
-		save(LAYOUT_KEY, JSON.stringify({ order: layout.order, hidden: [...layout.hidden] }));
+		save(LAYOUT_KEY, JSON.stringify({ order: layout.order, hidden: [...layout.hidden], sizes: layout.sizes }));
 	}
 
 	function applyLayout() {
@@ -1000,6 +1002,7 @@
 			if (!el) return;
 			el.parentElement.appendChild(el); // reorder within its own grid (the desktop app has one per screen)
 			el.classList.toggle('w-hidden', layout.hidden.has(id));
+			applySize(el, layout.sizes[id]);
 		});
 		requestAnimationFrame(() => {
 			document.querySelectorAll('[data-widget]:not(.w-hidden) canvas').forEach((cv) => {
@@ -1039,6 +1042,7 @@
 				return `<div class="w-item${on ? '' : ' off'}" data-id="${id}">
 					<div class="w-ico">${esc(w.icon)}</div>
 					<div class="w-text"><div class="w-name">${esc(w.name)}</div><div class="w-desc">${esc(w.desc)}</div></div>
+					<select class="w-size" title="Width" aria-label="Width of ${esc(w.name)}">${SIZE_CHOICES.map(([v, label]) => `<option value="${v}"${String((layout.sizes[id] || {}).w || '') === v ? ' selected' : ''}>${label}</option>`).join('')}</select>
 					<div class="w-move"><button data-move="-1" ${idx === 0 ? 'disabled' : ''} title="Move earlier" aria-label="Move ${esc(w.name)} up">▲</button><button data-move="1" ${idx === layout.order.length - 1 ? 'disabled' : ''} title="Move later" aria-label="Move ${esc(w.name)} down">▼</button></div>
 					<label class="toggle" title="${on ? 'Remove from' : 'Add to'} dashboard"><input type="checkbox" ${on ? 'checked' : ''} aria-label="Show ${esc(w.name)}"><span></span></label>
 				</div>`;
@@ -1046,7 +1050,188 @@
 		}).join('');
 	}
 
+	// ---------------------------------------------------------- drag to move, resize (manual or automatic)
+	const SIZE_CHOICES = [['', 'Auto'], ['3', '¼'], ['4', '⅓'], ['6', '½'], ['8', '⅔'], ['9', '¾'], ['12', 'Full']];
+	const minSpan = (id) => (id.startsWith('kpi-') ? 2 : 3);
+
+	/** Manual width (grid columns) and height (px) as CSS variables; the stylesheet applies them on wide windows only. */
+	function applySize(el, s) {
+		const w = s && s.w, h = s && s.h;
+		if (w) { el.dataset.span = w; el.style.setProperty('--span', w); } else { delete el.dataset.span; el.style.removeProperty('--span'); }
+		if (h) { el.dataset.h = h; el.style.setProperty('--h', h + 'px'); } else { delete el.dataset.h; el.style.removeProperty('--h'); }
+		const rs = el.querySelector('.w-resize');
+		if (rs) rs.classList.toggle('manual', !!(w || h));
+	}
+
+	function setSize(id, s) {
+		if (!s || (!s.w && !s.h)) delete layout.sizes[id]; else layout.sizes[id] = { w: s.w || null, h: s.h || null };
+		saveLayout();
+		applySize(widgetEl(id), layout.sizes[id]);
+		resizeCharts(widgetEl(id));
+	}
+
+	function resizeCharts(root) {
+		requestAnimationFrame(() => (root || document).querySelectorAll('canvas').forEach((cv) => { const ch = window.Chart && Chart.getChart(cv); if (ch) ch.resize(); }));
+	}
+
+	const manualSizing = () => window.matchMedia('(min-width: 1101px)').matches;
+
+	function scrollParent(el) {
+		for (let p = el.parentElement; p; p = p.parentElement) {
+			const o = getComputedStyle(p).overflowY;
+			if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+		}
+		return document.scrollingElement;
+	}
+
+	/** Slides widgets to their new places instead of jumping (FLIP). */
+	function animateMove(grid, mutate) {
+		const items = [...grid.children].filter((c) => c.matches('[data-widget]:not(.w-hidden)'));
+		const before = new Map(items.map((c) => [c, c.getBoundingClientRect()]));
+		mutate();
+		items.forEach((c) => {
+			const a = before.get(c), b = c.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top;
+			if (!dx && !dy) return;
+			c.style.transition = 'none';
+			c.style.transform = `translate(${dx}px, ${dy}px)`;
+			requestAnimationFrame(() => { c.style.transition = 'transform .22s cubic-bezier(.2, .7, .2, 1)'; c.style.transform = ''; });
+		});
+	}
+
+	function startDrag(ev, el) {
+		if (ev.button !== 0) return;
+		ev.preventDefault();
+		const grid = el.parentElement, id = el.dataset.widget, rect = el.getBoundingClientRect();
+		const ghost = document.createElement('div');
+		ghost.className = 'w-ghost';
+		ghost.innerHTML = `<b>${esc((widgetMeta(id) || {}).name || id)}</b><span>Drop to place</span>`;
+		ghost.style.width = Math.min(rect.width, 360) + 'px';
+		document.body.appendChild(ghost);
+		const offX = Math.min(ev.clientX - rect.left, Math.min(rect.width, 360) - 20), offY = 18;
+		el.classList.add('w-dragging');
+		document.body.classList.add('w-drag-active');
+		const scroller = scrollParent(el);
+		let lastX = ev.clientX, lastY = ev.clientY, raf = 0, busy = false;
+		const place = (x, y) => { ghost.style.transform = `translate(${x - offX}px, ${y - offY}px)`; };
+		place(ev.clientX, ev.clientY);
+		const reorder = () => {
+			if (busy) return;
+			const under = document.elementFromPoint(lastX, lastY), t = under && under.closest('[data-widget]');
+			if (!t || t === el || t.parentElement !== grid) return;
+			const r = t.getBoundingClientRect(), wide = r.width > grid.clientWidth * 0.8;
+			const after = wide ? lastY > r.top + r.height / 2 : lastX > r.left + r.width / 2;
+			const ref = after ? t.nextElementSibling : t;
+			if (ref === el || (after && t.nextElementSibling === el) || (!after && t.previousElementSibling === el && false)) return;
+			busy = true;
+			animateMove(grid, () => grid.insertBefore(el, ref));
+			setTimeout(() => { busy = false; }, 120);
+		};
+		const tick = () => { // scroll while dragging near the top or bottom edge
+			const box = scroller === document.scrollingElement ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect();
+			const edge = 70, d = lastY < box.top + edge ? -(box.top + edge - lastY) : lastY > box.bottom - edge ? lastY - (box.bottom - edge) : 0;
+			if (d) { scroller.scrollTop += Math.max(-24, Math.min(24, d / 3)); reorder(); }
+			raf = requestAnimationFrame(tick);
+		};
+		raf = requestAnimationFrame(tick);
+		const move = (e) => { lastX = e.clientX; lastY = e.clientY; place(lastX, lastY); reorder(); };
+		const up = () => {
+			cancelAnimationFrame(raf);
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+			window.removeEventListener('pointercancel', up);
+			busy = false;
+			reorder(); // the spot under the pointer when it was released
+			ghost.remove();
+			el.classList.remove('w-dragging');
+			document.body.classList.remove('w-drag-active');
+			// the grid's new order replaces those widgets' places in the saved order (other screens keep theirs)
+			const inGrid = [...grid.querySelectorAll(':scope > [data-widget]')].map((c) => c.dataset.widget);
+			const slots = layout.order.map((x, i) => (inGrid.includes(x) ? i : -1)).filter((i) => i >= 0);
+			slots.forEach((slot, k) => { layout.order[slot] = inGrid[k]; });
+			saveLayout();
+			renderWidgetList();
+			resizeCharts(grid);
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+		window.addEventListener('pointercancel', up);
+	}
+
+	function startResize(ev, el) {
+		if (ev.button !== 0) return;
+		ev.preventDefault();
+		ev.stopPropagation();
+		const id = el.dataset.widget, grid = el.parentElement, r = el.getBoundingClientRect();
+		const gs = getComputedStyle(grid), gap = parseFloat(gs.columnGap) || 20;
+		const cols = manualSizing() ? 12 : 0;
+		const colW = (grid.clientWidth - gap * 11) / 12;
+		const startH = r.height, startY = ev.clientY;
+		const cur = Object.assign({}, layout.sizes[id] || {});
+		const tip = document.createElement('div');
+		tip.className = 'w-size-tip';
+		el.appendChild(tip);
+		el.classList.add('w-resizing');
+		document.body.classList.add('w-resize-active');
+		const move = (e) => {
+			const s = {};
+			if (cols) {
+				const span = Math.round((e.clientX - r.left + gap) / (colW + gap));
+				s.w = Math.max(minSpan(id), Math.min(12, span));
+			}
+			s.h = Math.max(id.startsWith('kpi-') ? 110 : 160, Math.round((startH + e.clientY - startY) / 10) * 10);
+			cur.w = s.w || cur.w; cur.h = s.h;
+			applySize(el, cur);
+			tip.textContent = (cols ? `${cur.w} of 12 columns · ` : '') + `${cur.h}px`;
+			resizeCharts(el);
+		};
+		const up = () => {
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+			window.removeEventListener('pointercancel', up);
+			tip.remove();
+			el.classList.remove('w-resizing');
+			document.body.classList.remove('w-resize-active');
+			setSize(id, cur);
+			renderWidgetList();
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+		window.addEventListener('pointercancel', up);
+	}
+
 	function initLayout() {
+		document.querySelectorAll('[data-widget]').forEach((el) => {
+			const name = (widgetMeta(el.dataset.widget) || {}).name || '';
+			const grip = document.createElement('button');
+			grip.type = 'button';
+			grip.className = 'w-grip';
+			grip.title = 'Drag to move';
+			grip.setAttribute('aria-label', 'Move ' + name);
+			grip.innerHTML = '<svg width="18" height="8" viewBox="0 0 18 8" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="2" r="1.3"/><circle cx="9" cy="2" r="1.3"/><circle cx="15" cy="2" r="1.3"/><circle cx="3" cy="6" r="1.3"/><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/></g></svg>';
+			grip.addEventListener('pointerdown', (e) => startDrag(e, el));
+			grip.addEventListener('keydown', (e) => { // keyboard: arrows move the widget
+				const d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+				if (!d) return;
+				e.preventDefault();
+				const sib = d < 0 ? el.previousElementSibling : el.nextElementSibling;
+				if (!sib || !sib.matches('[data-widget]')) return;
+				animateMove(el.parentElement, () => el.parentElement.insertBefore(el, d < 0 ? sib : sib.nextElementSibling));
+				const inGrid = [...el.parentElement.querySelectorAll(':scope > [data-widget]')].map((c) => c.dataset.widget);
+				const slots = layout.order.map((x, i) => (inGrid.includes(x) ? i : -1)).filter((i) => i >= 0);
+				slots.forEach((slot, k) => { layout.order[slot] = inGrid[k]; });
+				saveLayout(); grip.focus();
+			});
+			el.appendChild(grip);
+			const rs = document.createElement('div');
+			rs.className = 'w-resize';
+			rs.title = 'Drag to resize · double-click for automatic size';
+			rs.addEventListener('pointerdown', (e) => startResize(e, el));
+			rs.addEventListener('dblclick', () => { setSize(el.dataset.widget, null); renderWidgetList(); toast(`“${name}” is sized automatically again`); });
+			el.appendChild(rs);
+		});
+		// the entrance animation would otherwise pin transforms and block the move animation
+		setTimeout(() => document.querySelectorAll('[data-widget]').forEach((el) => el.classList.add('w-settled')), 1400);
+		window.matchMedia('(min-width: 1101px)').addEventListener('change', () => resizeCharts());
 		document.querySelectorAll('[data-widget]').forEach((el) => {
 			const b = document.createElement('button');
 			b.className = 'w-remove';
@@ -1074,7 +1259,8 @@
 		$('layoutReset').addEventListener('click', () => {
 			layout.order = [...DEFAULT_ORDER];
 			layout.hidden = new Set(DEFAULT_HIDDEN);
-			saveLayout(); applyLayout(); renderWidgetList();
+			layout.sizes = {};
+			saveLayout(); applyLayout(); renderWidgetList(); resizeCharts();
 			toast('Layout reset to default');
 		});
 		$('layoutAll').addEventListener('click', () => {
@@ -1083,6 +1269,11 @@
 		});
 		$('widgetList').addEventListener('change', (ev) => {
 			const item = ev.target.closest('.w-item');
+			if (item && ev.target.classList.contains('w-size')) {
+				const cur = layout.sizes[item.dataset.id] || {};
+				setSize(item.dataset.id, { w: ev.target.value ? Number(ev.target.value) : null, h: cur.h });
+				return;
+			}
 			if (item && ev.target.type === 'checkbox') setWidgetVisible(item.dataset.id, ev.target.checked);
 		});
 		$('widgetList').addEventListener('click', (ev) => {
@@ -1326,6 +1517,7 @@
 
 	// shared with report.js (PDF export)
 	window.LA = {
+		applyLayout,
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
 		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange, filterExplorer, esc, agoShort, ago,
 		RANGE_LABEL, delta, nf, quitApp, refreshAll: () => { refreshDashboard(); refreshLogs(); renderFeed(); }, showWidget: (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); reveal(id); },
