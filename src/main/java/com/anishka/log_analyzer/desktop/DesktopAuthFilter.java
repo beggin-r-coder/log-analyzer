@@ -70,6 +70,15 @@ public class DesktopAuthFilter implements Filter {
 			}
 			return;
 		}
+		if ("/desktop/show".equals(path)) { // a second launch asks this instance to show its window
+			if (matches(r.getParameter("t"))) {
+				DesktopWindow.open();
+				w.setStatus(HttpServletResponse.SC_NO_CONTENT);
+			} else {
+				deny(w, "Not allowed.");
+			}
+			return;
+		}
 		if (path.startsWith("/css/") || path.startsWith("/js/") || path.startsWith("/favicon") || path.startsWith("/actuator/health")) {
 			chain.doFilter(req, res);
 			return;

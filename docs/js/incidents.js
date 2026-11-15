@@ -354,7 +354,7 @@
 			} else {
 				const id = Number(box.dataset.id), base = st.rules.find((r) => r.id === id);
 				if (kind === 'delete') {
-					if (!confirm(`Delete the rule “${base.name}”?`)) return;
+					if (!(await LA_UI.confirm({ title: 'Delete this alert rule?', message: `“${base.name}” will no longer open incidents. Existing incidents are kept.`, confirm: 'Delete rule', danger: true, icon: 'trash' }))) return;
 					const res = await fetch('/api/alert-rules/' + id, { method: 'DELETE' });
 					if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
 					LA.toast('Alert rule deleted');

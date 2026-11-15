@@ -62,6 +62,14 @@ class DesktopAuthFilterTest {
 	}
 
 	@Test
+	void aSecondLaunchCanAskForTheWindowOnlyWithTheToken() throws Exception {
+		MockHttpServletRequest ok = req("/desktop/show", "127.0.0.1:17171");
+		ok.setParameter("t", "tok-123");
+		assertEquals(204, run(ok, new MockFilterChain()).getStatus());
+		assertEquals(403, run(req("/desktop/show", "127.0.0.1:17171"), new MockFilterChain()).getStatus());
+	}
+
+	@Test
 	void theWindowsCookieAndStaticFilesPass() throws Exception {
 		MockHttpServletRequest ok = req("/api/logs", "localhost:17171");
 		ok.setCookies(new Cookie("la_desktop", "tok-123"));

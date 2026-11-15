@@ -11,6 +11,7 @@
 	<script th:src="@{/js/theme.js}" src="/js/theme.js"></script>
 	<link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}" href="/favicon.svg">
 	<link rel="stylesheet" th:href="@{/css/dashboard.css}" href="/css/dashboard.css">
+	<link rel="stylesheet" th:href="@{/css/ui.css}" href="/css/ui.css">
 	<script th:src="@{/js/http.js}" src="/js/http.js"></script>
 	<link rel="stylesheet" th:href="@{/css/sources.css}" href="/css/sources.css">
 </head>
@@ -54,6 +55,7 @@
 			</div>
 		</div>
 
+		<div id="sourcesView" th:fragment="sourcesView">
 		<section class="src-welcome" id="welcome" hidden>
 			<div class="src-welcome-title">
 				<h2>Connect your logs</h2>
@@ -152,9 +154,11 @@
 				</form>
 			</div>
 		</section>
+		</div>
 	</main>
 	<div class="toast" id="toast"></div>
 	<script th:inline="javascript">window.APP_DESKTOP = /*[[${desktop}]]*/ false;</script>
+	<script th:src="@{/js/ui.js}" src="/js/ui.js"></script>
 	<script th:src="@{/js/sources.js}" src="/js/sources.js"></script>
 </body>
 </html>

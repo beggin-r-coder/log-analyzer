@@ -59,7 +59,7 @@
 			if (b.dataset.act === 'toggle') await api(`/api/sources/${id}/enabled?value=${!s.enabled}`, { method: 'POST' });
 			if (b.dataset.act === 'edit') openEditor(s.type, s);
 			if (b.dataset.act === 'delete') {
-				if (!confirm(`Remove “${s.name}”? Logs already read stay on the dashboard.`)) return;
+				if (!(await LA_UI.confirm({ title: 'Remove this log source?', message: `“${s.name}” will no longer be read. Logs already read stay on the dashboard.`, confirm: 'Remove', danger: true, icon: 'trash' }))) return;
 				await api(`/api/sources/${id}`, { method: 'DELETE' });
 				toast('Source removed');
 			}
@@ -216,7 +216,7 @@
 			const s = await api('/api/sources/sample', { method: 'POST' });
 			toast(`Sample Siebel logs are being written to ${s.path}`);
 			await refresh();
-			setTimeout(() => { location.href = '/'; }, 1200);
+			setTimeout(() => { if (window.LA_SHELL) window.LA_SHELL.go('overview'); else location.href = '/'; }, 1200);
 		} catch (e) { toast('Failed: ' + e.message); $('sampleBtn').disabled = false; }
 	});
 

@@ -129,9 +129,9 @@ def main():
     for name, html in pages.items():
         with open(os.path.join(DOCS, name + '.html'), 'w') as f:
             f.write(to_static(html, name))
-    for css in ('dashboard.css', 'presenter.css'):
+    for css in ('dashboard.css', 'presenter.css', 'ui.css'):
         shutil.copy(os.path.join(STATIC, 'css', css), os.path.join(DOCS, 'css'))
-    for js in ('dashboard.js', 'ai.js', 'incidents.js', 'presenter.js', 'report.js', 'theme.js'):
+    for js in ('dashboard.js', 'ai.js', 'incidents.js', 'presenter.js', 'report.js', 'theme.js', 'ui.js'):
         shutil.copy(os.path.join(STATIC, 'js', js), os.path.join(DOCS, 'js'))
     shutil.copy(os.path.join(STATIC, 'favicon.svg'), DOCS)
     open(os.path.join(DOCS, '.nojekyll'), 'w').close()

@@ -33,10 +33,12 @@ public class DesktopController {
 	private final ApplicationContext context;
 	private final Path home;
 	private final String version;
+	private final int retentionDays;
 
 	public DesktopController(ApplicationContext context, @Value("${app.desktop.home:.}") String home,
-			@Value("${app.version:1.0.0}") String version) {
+			@Value("${app.version:1.0.0}") String version, @Value("${logs.retention-days:14}") int retentionDays) {
 		this.context = context;
+		this.retentionDays = retentionDays;
 		this.home = Path.of(home).toAbsolutePath();
 		this.version = version;
 	}
@@ -51,6 +53,7 @@ public class DesktopController {
 		m.put("java", System.getProperty("java.version"));
 		m.put("os", System.getProperty("os.name"));
 		m.put("folderPicker", !GraphicsEnvironment.isHeadless());
+		m.put("retentionDays", retentionDays);
 		return m;
 	}
 
@@ -102,10 +105,11 @@ public class DesktopController {
 	public Map<String, Object> quit() {
 		Thread t = new Thread(() -> {
 			try {
-				Thread.sleep(400); // let the response reach the window first
+				Thread.sleep(700); // let the window close itself first
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
 			}
+			DesktopWindow.close(); // and make sure it is gone
 			System.exit(SpringApplication.exit(context, () -> 0));
 		}, "desktop-quit");
 		t.setDaemon(false);

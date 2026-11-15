@@ -61,16 +61,12 @@ public class DashboardController {
 
 	@GetMapping("/")
 	public String dashboard() {
-		// desktop app, first run: nothing to show yet, so start at "connect your logs"
-		if (desktop && sources.count() == 0 && logs.count() == 0) {
-			return "redirect:/sources?welcome";
-		}
-		return "dashboard";
+		return "dashboard"; // in the desktop app this is the whole window; it opens on Sources when none are set up
 	}
 
 	@GetMapping("/sources")
 	public String sources() {
-		return "sources";
+		return desktop ? "redirect:/?view=sources" : "sources";
 	}
 
 	@GetMapping("/login")
@@ -80,6 +76,9 @@ public class DashboardController {
 
 	@GetMapping("/parser")
 	public String parser() {
+		if (desktop) {
+			throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
+		}
 		return "parser";
 	}
 }

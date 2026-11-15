@@ -704,7 +704,7 @@
 		ensureOption($('categoryFilter'), e.category);
 		syncExplorerControls();
 		refreshLogs();
-		$('explorer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+		reveal('explorer');
 	}
 
 	function ensureOption(select, value) {
@@ -909,7 +909,7 @@
 
 		// simulator controls
 		$('livePill').addEventListener('click', async () => {
-			if (window.APP_USER && window.APP_USER.desktop) { location.href = '/sources'; return; }
+			if (window.APP_USER && window.APP_USER.desktop) { if (window.LA_SHELL) window.LA_SHELL.go('sources'); return; }
 			if (window.APP_USER && !window.APP_USER.admin) {
 				toast('Read-only demo account: only the admin can pause the live stream');
 				return;
@@ -919,12 +919,7 @@
 				toast(state.simulatorRunning ? 'Live log stream resumed' : 'Live log stream paused');
 			} catch (e) { toast('Failed: ' + e.message); }
 		});
-		if ($('quitBtn')) $('quitBtn').addEventListener('click', async () => {
-			if (!confirm('Quit Log Analyzer? Logs are not read while it is closed.')) return;
-			try { await fetch('/api/desktop/quit', { method: 'POST' }); } catch (e) { /* closing */ }
-			document.body.innerHTML = '<div style="display:grid;place-items:center;height:100vh;font-family:system-ui,sans-serif;color:#6b7280">Log Analyzer has been closed. You can close this window.</div>';
-			setTimeout(() => window.close(), 600);
-		});
+		if ($('quitBtn')) $('quitBtn').addEventListener('click', () => { closeMenus(); quitApp(); });
 		if ($('incidentBtn')) $('incidentBtn').addEventListener('click', async () => {
 			closeMenus();
 			try {
@@ -986,6 +981,12 @@
 	})();
 
 	const widgetEl = (id) => document.querySelector(`[data-widget="${id}"]`);
+	/** Brings a widget into view: in the desktop app by switching to its screen, on the web by scrolling. */
+	function reveal(id) {
+		if (window.LA_SHELL) { window.LA_SHELL.reveal(id); return; }
+		const el = widgetEl(id);
+		if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
 	const widgetMeta = (id) => WIDGETS.find((w) => w.id === id);
 	const visibleWidgets = () => layout.order.filter((id) => !layout.hidden.has(id));
 
@@ -994,11 +995,10 @@
 	}
 
 	function applyLayout() {
-		const grid = document.querySelector('.grid');
 		layout.order.forEach((id) => {
 			const el = widgetEl(id);
 			if (!el) return;
-			grid.appendChild(el);
+			el.parentElement.appendChild(el); // reorder within its own grid (the desktop app has one per screen)
 			el.classList.toggle('w-hidden', layout.hidden.has(id));
 		});
 		requestAnimationFrame(() => {
@@ -1279,7 +1279,7 @@
 			const b = ev.target.closest('[data-tour]');
 			if (!b) return;
 			const step = b.dataset.tour;
-			const show = (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); widgetEl(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+			const show = (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); reveal(id); };
 			if (step === 'incident') {
 				try {
 					renderSimulator(await api('/api/simulator/incident?service=upi-switch&minutes=5', { method: 'POST' }));
@@ -1312,11 +1312,23 @@
 		});
 	}
 
+	/** Desktop app: ask, stop the app and close its window. */
+	async function quitApp() {
+		const ok = await window.LA_UI.confirm({
+			title: 'Quit Log Analyzer?', icon: 'power', confirm: 'Quit', danger: true,
+			message: 'It stops reading your logs until you start it again. Anything written in the meantime is picked up when it restarts.\n\nTo keep it reading in the background, just close the window instead.'
+		});
+		if (!ok) return;
+		document.body.classList.add('app-quitting');
+		try { await fetch('/api/desktop/quit', { method: 'POST' }); } catch (e) { /* already closing */ }
+		window.close();
+	}
+
 	// shared with report.js (PDF export)
 	window.LA = {
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
 		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange, filterExplorer, esc, agoShort, ago,
-		RANGE_LABEL, delta, nf, refreshAll: () => { refreshDashboard(); refreshLogs(); renderFeed(); }, showWidget: (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); widgetEl(id).scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+		RANGE_LABEL, delta, nf, quitApp, refreshAll: () => { refreshDashboard(); refreshLogs(); renderFeed(); }, showWidget: (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); reveal(id); },
 		isVisible: (id) => !layout.hidden.has(id), charts: { trend: trendChart, donut: donutChart, categories: barChart, volume: volumeChart, formats: formatChart, errorrate: errorRateChart, svcerrors: svcErrorChart }
 	};
 

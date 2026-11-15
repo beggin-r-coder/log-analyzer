@@ -19,8 +19,19 @@
 				b.title = b.getAttribute('aria-label');
 			});
 		},
-		toggle: function () { this.set(this.get() === 'dark' ? 'light' : 'dark'); }
+		toggle: function () { this.set(this.get() === 'dark' ? 'light' : 'dark'); },
+		/** 'light', 'dark' or 'system' (follow the Windows setting). */
+		mode: function () { var m = null; try { m = localStorage.getItem(KEY); } catch (e) { /* blocked */ } return m === 'dark' || m === 'light' ? m : 'system'; },
+		setMode: function (m) {
+			if (m === 'system') {
+				this.set(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+				try { localStorage.removeItem(KEY); } catch (e) { /* blocked */ }
+			} else this.set(m);
+		}
 	};
+	if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (ev) {
+		if (window.LA_THEME.mode() === 'system') { window.LA_THEME.set(ev.matches ? 'dark' : 'light'); try { localStorage.removeItem(KEY); } catch (e) { /* blocked */ } }
+	});
 	document.addEventListener('click', function (e) {
 		if (e.target.closest && e.target.closest('[data-theme-toggle]')) window.LA_THEME.toggle();
 	});
