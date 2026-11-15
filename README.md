@@ -312,6 +312,25 @@ Deploy from the `Dockerfile`, set `APP_PASSWORD` (and `DEMO_MODE=true` for a dem
   health check, the H2 console off in production, a capped Gemini budget, and gzip with long-cached static files.
 - **Demo controls:** pause or resume the live stream, and "Simulate incident".
 
+## Custom categories
+
+Group log events by your own rules and follow them like any built-in metric (**Categories** in the desktop app's
+sidebar; the *Custom categories* card on the web dashboard):
+
+- **Rules:** any field (message, component / service, level, error class, trace / SARM id, host, logger, or anywhere)
+  with *contains*, *does not contain*, *is exactly*, *starts / ends with*, *matches* with `*` and `?` wildcards
+  (`SBL-DAT-*`), or a regular expression. Combine several with **any** or **all**, limit to levels, and match
+  upper/lower case exactly if needed (**Aa**).
+- **Live preview** while editing: how many events match in the selected period, a chart and the latest matches.
+- **Shown as:** a KPI card on the overview (count, change vs the previous period, sparkline, top component), its own
+  chart (line, area or bars), and a **Your categories over time** chart comparing all of them. Every card, chart line
+  and legend entry opens the matching events in the log explorer, which also has the categories in its category
+  filter. All of them can be moved and resized like the other widgets.
+- **Alerts:** optionally open an incident when at least *N* events match within *M* minutes, with a chosen severity;
+  it resolves itself once the category calms down.
+- **Track as category** in a log's details starts a category from that message: error codes (`SBL-…`, `ORA-…`) are
+  used as they are, ids and numbers in the text become `*`.
+
 ## Oracle Siebel CRM logs
 
 The parser understands Siebel component, server and web server extension (SWSE) logs, as found under

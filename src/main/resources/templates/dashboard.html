@@ -12,6 +12,7 @@
 	<link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}" href="/favicon.svg">
 	<link rel="stylesheet" th:href="@{/css/dashboard.css}" href="/css/dashboard.css">
 	<link rel="stylesheet" th:href="@{/css/ui.css}" href="/css/ui.css">
+	<link rel="stylesheet" th:href="@{/css/categories.css}" href="/css/categories.css">
 	<link rel="stylesheet" th:unless="${desktop}" th:href="@{/css/presenter.css}" href="/css/presenter.css">
 	<th:block th:if="${desktop}">
 		<link rel="stylesheet" th:href="@{/css/sources.css}" href="/css/sources.css">
@@ -418,6 +419,34 @@
 			</section>
 
 			<!-- ============ AI ERROR ANALYSIS ============ -->
+			<!-- ============ YOUR CATEGORIES: compare over time ============ -->
+			<section data-widget="catcompare" class="card span-8">
+				<div class="card-head">
+					<div><div class="card-title">Your categories over time</div><div class="card-sub">Events matching each of your categories · click a line to see them</div></div>
+					<div class="cat-legend" id="catLegend"></div>
+				</div>
+				<div class="card-body">
+					<div class="chart-wrap" id="catCompareWrap"><canvas id="catCompareChart"></canvas></div>
+					<div class="cat-empty" id="catCompareEmpty" hidden>
+						<b>Track the errors that matter to you</b>
+						<span>Group events by your own rules, such as messages containing “Record not found” or codes like SBL-DAT-*, and follow them here.</span>
+						<button class="btn primary small" type="button" data-cat-new>+ Create a category</button>
+					</div>
+				</div>
+			</section>
+
+			<!-- ============ YOUR CATEGORIES: manage ============ -->
+			<section data-widget="catmanager" id="catmanager" class="card span-12">
+				<div class="card-head">
+					<div><div class="card-title">Custom categories</div><div class="card-sub">Your own groups of events, matched by text, codes or patterns, shown as KPIs and charts</div></div>
+					<button class="btn primary small" type="button" data-cat-new>+ New category</button>
+				</div>
+				<div class="card-body">
+					<div class="cat-list" id="catList"></div>
+					<div class="cat-editor" id="catEditor" hidden></div>
+				</div>
+			</section>
+
 			<section data-widget="aianalysis" id="ai" class="card span-12" style="animation-delay: .45s">
 				<div class="card-head">
 					<div>
@@ -671,6 +700,7 @@
 	<script th:src="@{/js/dashboard.js}" src="/js/dashboard.js"></script>
 	<script th:src="@{/js/ai.js}" src="/js/ai.js"></script>
 	<script th:src="@{/js/incidents.js}" src="/js/incidents.js"></script>
+	<script th:src="@{/js/categories.js}" src="/js/categories.js"></script>
 	<script th:unless="${desktop}" th:src="@{/js/presenter.js}" src="/js/presenter.js"></script>
 	<th:block th:if="${desktop}">
 		<script th:inline="javascript">window.APP_DESKTOP = true;</script>

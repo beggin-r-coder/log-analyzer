@@ -19,7 +19,7 @@
 		range: load('range', '24h'),
 		summary: null,
 		serviceSort: { key: 'errorRate', asc: false },
-		explorer: { q: '', levels: new Set(), service: '', category: '', sort: 'timestamp', dir: 'desc', page: 0, size: 50 },
+		explorer: { q: '', levels: new Set(), service: '', category: '', custom: '', sort: 'timestamp', dir: 'desc', page: 0, size: 50 },
 		maxSeenId: 0,
 		openRows: new Set(),
 		simulatorRunning: true
@@ -582,6 +582,7 @@
 	async function refreshDashboard() {
 		try {
 			renderSummary(await api(`/api/dashboard?range=${encodeURIComponent(state.range)}&tz=${TZ_OFFSET}`));
+			document.dispatchEvent(new CustomEvent('la:refreshed', { detail: state.range }));
 			return true;
 		} catch (e) {
 			$('timestamp').textContent = 'Connection lost – retrying…';
@@ -599,6 +600,7 @@
 		if (e.levels.size) p.set('levels', [...e.levels].join(','));
 		if (e.service) p.set('service', e.service);
 		if (e.category) p.set('category', e.category);
+		if (e.custom) p.set('custom', e.custom);
 		p.set('sort', e.sort);
 		p.set('dir', e.dir);
 		Object.entries(extra || {}).forEach(([k, v]) => p.set(k, v));
@@ -664,7 +666,7 @@
 				${f('Logger', r.logger)}
 				${f('Record ID', r.id)}
 			</div>
-			<div class="detail-actions">${analyzeButton(r)}</div>
+			<div class="detail-actions">${analyzeButton(r)}${!window.APP_USER || window.APP_USER.admin !== false ? `<button class="btn small" type="button" data-track="${esc(r.message)}" title="Create a category from this message and follow it over time">Track as category</button>` : ''}</div>
 			<pre class="raw">${esc(r.rawLine)}</pre>
 		</td></tr>`;
 	}
@@ -685,7 +687,7 @@
 		const e = state.explorer;
 		$('logSearch').value = e.q;
 		$('serviceFilter').value = e.service;
-		$('categoryFilter').value = e.category;
+		$('categoryFilter').value = e.custom ? 'custom:' + e.custom : e.category;
 		document.querySelectorAll('.lvl-toggle').forEach((b) => b.classList.toggle('on', e.levels.has(b.dataset.level)));
 		setSortIndicators('logTable', e.sort, e.dir === 'asc');
 	}
@@ -697,11 +699,13 @@
 		e.levels = new Set(f.levels || []);
 		e.service = f.service || '';
 		e.category = f.category || '';
+		e.custom = f.custom ? String(f.custom) : '';
 		e.page = 0;
 		e.sort = 'timestamp';
 		e.dir = 'desc';
 		ensureOption($('serviceFilter'), e.service);
 		ensureOption($('categoryFilter'), e.category);
+		$('categoryFilter').value = e.custom ? 'custom:' + e.custom : e.category;
 		syncExplorerControls();
 		refreshLogs();
 		reveal('explorer');
@@ -713,12 +717,26 @@
 		}
 	}
 
+	/** The user's own categories in the explorer's category filter. */
+	function addCustomOptions(sel) {
+		const cats = (window.LA_CATS && window.LA_CATS.list()) || [];
+		sel.querySelectorAll('optgroup[data-custom]').forEach((g) => g.remove());
+		if (!cats.length) return;
+		const g = document.createElement('optgroup');
+		g.label = 'Your categories';
+		g.dataset.custom = '1';
+		cats.forEach((c) => g.appendChild(new Option(c.name, 'custom:' + c.id)));
+		sel.appendChild(g);
+		if (state.explorer.custom) sel.value = 'custom:' + state.explorer.custom;
+	}
+
 	async function refreshFacets() {
 		try {
 			const f = await api('/api/logs/facets');
 			[['serviceFilter', f.services, 'All services'], ['categoryFilter', f.categories, 'All categories']].forEach(([id, values, all]) => {
 				const sel = $(id), cur = sel.value;
 				sel.innerHTML = `<option value="">${all}</option>` + values.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+				if (id === 'categoryFilter') addCustomOptions(sel);
 				ensureOption(sel, cur);
 				sel.value = cur;
 			});
@@ -842,7 +860,13 @@
 		});
 
 		$('serviceFilter').addEventListener('change', (ev) => { state.explorer.service = ev.target.value; state.explorer.page = 0; refreshLogs(); });
-		$('categoryFilter').addEventListener('change', (ev) => { state.explorer.category = ev.target.value; state.explorer.page = 0; refreshLogs(); });
+		$('categoryFilter').addEventListener('change', (ev) => {
+			const v = ev.target.value, custom = v.startsWith('custom:');
+			state.explorer.category = custom ? '' : v;
+			state.explorer.custom = custom ? v.slice(7) : '';
+			state.explorer.page = 0;
+			refreshLogs();
+		});
 		$('mobileSort').addEventListener('change', (ev) => {
 			const [sort, dir] = ev.target.value.split(':');
 			Object.assign(state.explorer, { sort, dir, page: 0 });
@@ -954,6 +978,8 @@
 		{ id: 'errorrate', group: 'Charts', name: 'Error rate over time', desc: 'Error % per bucket against a 3% SLO', icon: '%' },
 		{ id: 'svcerrors', group: 'Charts', name: 'Errors by service', desc: 'Error and warning counts per service', icon: '▥' },
 		{ id: 'formats', group: 'Charts', name: 'Log format mix', desc: 'Formats detected by the universal parser', icon: '{}' },
+		{ id: 'catcompare', group: 'Your categories', name: 'Your categories over time', desc: 'Matching events per category, side by side', icon: '⌁' },
+		{ id: 'catmanager', group: 'Your categories', name: 'Custom categories', desc: 'Create categories from text, codes or patterns', icon: '#' },
 		{ id: 'livefeed', group: 'Live & tables', name: 'Live log stream', desc: 'Real-time feed pushed from the database', icon: '●' },
 		{ id: 'aianalysis', group: 'Live & tables', name: window.APP_USER && window.APP_USER.ai ? 'AI error analysis' : 'Error analysis', desc: window.APP_USER && window.APP_USER.ai ? 'Gemini root cause, impact and recovery steps' : 'NLP root cause, impact and recovery steps', icon: '✦' },
 		{ id: 'incidents', group: 'Live & tables', name: 'Critical error patterns', desc: 'Error categories ranked by severity', icon: '▲' },
@@ -961,22 +987,24 @@
 		{ id: 'explorer', group: 'Live & tables', name: 'Log explorer', desc: 'Search, filter, sort and export logs', icon: '⌕' }
 	];
 	const DEFAULT_ORDER = ['kpi-total', 'kpi-info', 'kpi-warn', 'kpi-error', 'kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents',
-		'impact', 'sla', 'incidentdesk', 'health', 'trend', 'livefeed', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'aianalysis', 'incidents', 'services', 'explorer'];
+		'impact', 'sla', 'incidentdesk', 'health', 'trend', 'livefeed', 'donut', 'categories', 'catcompare', 'volume', 'formats', 'errorrate', 'svcerrors', 'aianalysis', 'catmanager', 'incidents', 'services', 'explorer'];
 	const DEFAULT_HIDDEN = ['kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'volume', 'formats', 'errorrate', 'svcerrors']
 		// desktop (Siebel / own logs): the payments impact panel only applies to banking payment services
 		.concat(window.APP_USER && window.APP_USER.desktop ? ['impact'] : []);
 	const LAYOUT_KEY = 'layout.v1';
+	const DYNAMIC = /^cat[kc]-\d+$/; // widgets of the user's own categories
 
 	const layout = (() => {
 		try {
 			const saved = JSON.parse(load(LAYOUT_KEY, 'null'));
 			if (saved && Array.isArray(saved.order)) {
 				const known = new Set(DEFAULT_ORDER);
-				const order = saved.order.filter((id) => known.has(id));
+				const ok = (id) => known.has(id) || DYNAMIC.test(id);
+				const order = saved.order.filter(ok);
 				DEFAULT_ORDER.forEach((id) => { if (!order.includes(id)) order.splice(DEFAULT_ORDER.indexOf(id), 0, id); });
 				const sizes = {};
-				Object.entries(saved.sizes || {}).forEach(([id, s]) => { if (known.has(id) && s) sizes[id] = { w: s.w || null, h: s.h || null }; });
-				return { order, hidden: new Set((saved.hidden || []).filter((id) => known.has(id))), sizes };
+				Object.entries(saved.sizes || {}).forEach(([id, s]) => { if (ok(id) && s) sizes[id] = { w: s.w || null, h: s.h || null }; });
+				return { order, hidden: new Set((saved.hidden || []).filter(ok)), sizes };
 			}
 		} catch (e) { /* fall through */ }
 		return { order: [...DEFAULT_ORDER], hidden: new Set(DEFAULT_HIDDEN), sizes: {} };
@@ -1033,7 +1061,7 @@
 	}
 
 	function renderWidgetList() {
-		const groups = ['KPIs', 'Business', 'Charts', 'Live & tables'];
+		const groups = ['KPIs', 'Business', 'Charts', 'Your categories', 'Live & tables'];
 		const count = visibleWidgets().length;
 		$('widgetList').innerHTML = `<div class="w-group" style="margin-top:12px">${count} of ${WIDGETS.length} widgets shown</div>` + groups.map((g) => {
 			const ids = layout.order.filter((id) => widgetMeta(id) && widgetMeta(id).group === g);
@@ -1199,8 +1227,35 @@
 		window.addEventListener('pointercancel', up);
 	}
 
-	function initLayout() {
-		document.querySelectorAll('[data-widget]').forEach((el) => {
+	/** Adds a widget made at run time (e.g. a KPI for one of the user's categories) to the layout. */
+	function registerWidget(meta, el) {
+		if (!widgetMeta(meta.id)) WIDGETS.push(meta); else Object.assign(widgetMeta(meta.id), meta);
+		if (!layout.order.includes(meta.id)) {
+			const anchor = typeof meta.after === 'function' ? meta.after(layout.order) : meta.after;
+			const after = layout.order.lastIndexOf(anchor);
+			layout.order.splice(after >= 0 ? after + 1 : layout.order.length, 0, meta.id);
+			saveLayout();
+		}
+		decorate(el);
+		applySize(el, layout.sizes[meta.id]);
+		el.classList.toggle('w-hidden', layout.hidden.has(meta.id));
+	}
+
+	function unregisterWidget(id) {
+		const i = WIDGETS.findIndex((w) => w.id === id);
+		if (i >= 0) WIDGETS.splice(i, 1);
+		layout.order = layout.order.filter((x) => x !== id);
+		layout.hidden.delete(id);
+		delete layout.sizes[id];
+		const el = widgetEl(id);
+		if (el) el.remove();
+		saveLayout();
+	}
+
+	function decorate(el) {
+		if (el.dataset.decorated) return;
+		el.dataset.decorated = '1';
+		{
 			const name = (widgetMeta(el.dataset.widget) || {}).name || '';
 			const grip = document.createElement('button');
 			grip.type = 'button';
@@ -1228,11 +1283,8 @@
 			rs.addEventListener('pointerdown', (e) => startResize(e, el));
 			rs.addEventListener('dblclick', () => { setSize(el.dataset.widget, null); renderWidgetList(); toast(`“${name}” is sized automatically again`); });
 			el.appendChild(rs);
-		});
-		// the entrance animation would otherwise pin transforms and block the move animation
-		setTimeout(() => document.querySelectorAll('[data-widget]').forEach((el) => el.classList.add('w-settled')), 1400);
-		window.matchMedia('(min-width: 1101px)').addEventListener('change', () => resizeCharts());
-		document.querySelectorAll('[data-widget]').forEach((el) => {
+		}
+		{
 			const b = document.createElement('button');
 			b.className = 'w-remove';
 			b.title = 'Remove widget';
@@ -1245,7 +1297,13 @@
 				toast(`Removed “${widgetMeta(id).name}”. Re-add it from Customize.`);
 			});
 			el.appendChild(b);
-		});
+		}
+		setTimeout(() => el.classList.add('w-settled'), 1400);
+	}
+
+	function initLayout() {
+		document.querySelectorAll('[data-widget]').forEach(decorate);
+		window.matchMedia('(min-width: 1101px)').addEventListener('change', () => resizeCharts());
 		applyLayout();
 		renderWidgetList();
 
@@ -1257,7 +1315,9 @@
 		$('drawerBackdrop').addEventListener('click', close);
 		document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 		$('layoutReset').addEventListener('click', () => {
+			const dynamic = layout.order.filter((id) => DYNAMIC.test(id));
 			layout.order = [...DEFAULT_ORDER];
+			dynamic.forEach((id) => layout.order.splice(layout.order.indexOf(id.startsWith('catk') ? 'kpi-incidents' : 'catcompare') + 1, 0, id));
 			layout.hidden = new Set(DEFAULT_HIDDEN);
 			layout.sizes = {};
 			saveLayout(); applyLayout(); renderWidgetList(); resizeCharts();
@@ -1517,7 +1577,8 @@
 
 	// shared with report.js (PDF export)
 	window.LA = {
-		applyLayout,
+		applyLayout, addCustomOptions, registerWidget, unregisterWidget, saveLayout, renderWidgetList, resizeCharts, bucketLabel, TZ_OFFSET, C, ensureOption,
+		isHidden: (id) => layout.hidden.has(id),
 		get summary() { return state.summary; }, get range() { return state.range; }, explorer: state.explorer,
 		feed, WIDGETS, visibleWidgets, widgetEl, widgetMeta, explorerParams, api, toast, dayLabel, fmtLogTime, bucketRange, filterExplorer, esc, agoShort, ago,
 		RANGE_LABEL, delta, nf, quitApp, refreshAll: () => { refreshDashboard(); refreshLogs(); renderFeed(); }, showWidget: (id) => { if (layout.hidden.has(id)) setWidgetVisible(id, true); reveal(id); },

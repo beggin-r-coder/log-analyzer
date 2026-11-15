@@ -35,24 +35,35 @@ public class LogQueryService {
 
 	private final LogRecordRepository repository;
 
-	public LogQueryService(LogRecordRepository repository) {
+	private final com.anishka.log_analyzer.category.CustomCategoryRepository categories;
+
+	public LogQueryService(LogRecordRepository repository, com.anishka.log_analyzer.category.CustomCategoryRepository categories) {
+		this.categories = categories;
 		this.repository = repository;
 	}
 
 	public PageResponse<LogRecordDto> search(LogQuery q) {
 		int size = Math.max(1, Math.min(q.size() == null ? 25 : q.size(), MAX_PAGE_SIZE));
 		int page = Math.max(0, q.page() == null ? 0 : q.page());
-		return PageResponse.of(repository.findAll(spec(q), PageRequest.of(page, size, sort(q))).map(LogRecordDto::from));
+		return PageResponse.of(repository.findAll(withCustom(q), PageRequest.of(page, size, sort(q))).map(LogRecordDto::from));
 	}
 
 	public List<LogRecordDto> export(LogQuery q) {
-		return repository.findAll(spec(q), PageRequest.of(0, MAX_EXPORT_ROWS, sort(q))).map(LogRecordDto::from)
+		return repository.findAll(withCustom(q), PageRequest.of(0, MAX_EXPORT_ROWS, sort(q))).map(LogRecordDto::from)
 				.getContent();
 	}
 
 	public LogRecordDto byId(long id) {
 		return repository.findById(id).map(LogRecordDto::from)
 				.orElseThrow(() -> new IllegalArgumentException("No log with id " + id));
+	}
+
+	/** The explorer's filters, plus the rules of a custom category when one is chosen. */
+	private Specification<LogRecord> withCustom(LogQuery q) {
+		Specification<LogRecord> s = spec(q);
+		if (q.custom() == null) return s;
+		return s.and(categories.findById(q.custom()).map(c -> com.anishka.log_analyzer.category.CategoryService.matcher(c).specification())
+				.orElseThrow(() -> new IllegalArgumentException("No category " + q.custom())));
 	}
 
 	private static Sort sort(LogQuery q) {

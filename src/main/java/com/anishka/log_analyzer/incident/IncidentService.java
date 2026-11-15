@@ -246,6 +246,45 @@ public class IncidentService {
 		return i;
 	}
 
+	/**
+	 * A custom category passed its alert threshold: opens an incident for it (or keeps the open one alive). The
+	 * incident recovers on its own once the category stays below the threshold, like service incidents.
+	 */
+	@Transactional
+	public void categoryBreach(String category, String severity, long matches, int threshold, int window, String sample, LocalDateTime now) {
+		String key = truncate("Category: " + category, 64);
+		Incident active = incidents.findFirstByServiceAndStatusIn(key, ACTIVE).orElse(null);
+		String what = matches + " matching events in " + window + " min (alert at " + threshold + ")";
+		if (active != null) {
+			active.setLastBreachAt(now);
+			if (rank(severity) > rank(active.getSeverity())) {
+				addEvent(active, now, "UPDATED", "system", "Escalated " + active.getSeverity() + " → " + severity + ": " + what + ".");
+				active.setSeverity(severity);
+				changed(active, "escalated");
+			}
+			incidents.save(active);
+			return;
+		}
+		boolean snoozed = incidents.findByOpenedAtGreaterThanEqualOrderByOpenedAtDesc(now.minusHours(2)).stream()
+				.anyMatch(i -> i.getService().equals(key) && i.getResolvedAt() != null && !"auto-recovery".equals(i.getResolvedBy())
+						&& i.getResolvedAt().isAfter(now.minusMinutes(SNOOZE_AFTER_MANUAL_RESOLVE_MINUTES)));
+		if (snoozed) return;
+		Incident i = new Incident();
+		i.setService(key);
+		i.setTitle(truncate(category + " is spiking", 200));
+		i.setSeverity(SEVERITIES.contains(severity) ? severity : "MEDIUM");
+		i.setStatus(Incident.OPEN);
+		i.setRuleName(truncate("Category: " + category, 120));
+		i.setOwner(ServiceCatalog.owner(key));
+		i.setOpenedAt(now);
+		i.setLastBreachAt(now);
+		incidents.save(i);
+		addEvent(i, now, "OPENED", "system", "Custom category \"" + category + "\": " + what + "."
+				+ (sample == null ? "" : "\nLatest: " + truncate(sample, 300)));
+		changed(i, "opened");
+		notifier.opened(i);
+	}
+
 	private static String describe(Breach b) {
 		return String.format("%d errors / %d events (%.1f%%) in %d min", b.errors, b.events, b.rate(), b.window);
 	}

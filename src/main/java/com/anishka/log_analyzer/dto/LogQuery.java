@@ -7,5 +7,6 @@ import java.util.List;
  * parameters, e.g. {@code /api/logs?q=timeout&levels=ERROR,FATAL&sort=timestamp&dir=desc}.
  */
 public record LogQuery(String q, List<String> levels, String service, String category, String range, String sort,
-		String dir, Integer page, Integer size) {
+		String dir, Integer page, Integer size, Long custom) {
+
 }

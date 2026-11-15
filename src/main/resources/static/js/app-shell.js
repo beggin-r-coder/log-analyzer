@@ -13,6 +13,7 @@
 		live: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
 		incidents: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
 		analysis: '<path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+		categories: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
 		sources: '<ellipse cx="12" cy="5.5" rx="8" ry="2.5"/><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5"/>',
 		settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
 		power: '<path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>',
@@ -22,11 +23,12 @@
 	const svg = (k, s) => `<svg width="${s || 18}" height="${s || 18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[k]}</svg>`;
 
 	const VIEWS = [
-		{ id: 'overview', label: 'Overview', sub: 'Health, volume and errors across all your log sources', widgets: ['kpi-total', 'kpi-info', 'kpi-warn', 'kpi-error', 'kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'impact', 'sla', 'health', 'trend', 'donut', 'categories', 'volume', 'formats', 'errorrate', 'svcerrors', 'services'], tools: ['range', 'customize', 'export'] },
+		{ id: 'overview', label: 'Overview', sub: 'Health, volume and errors across all your log sources', widgets: ['kpi-total', 'kpi-info', 'kpi-warn', 'kpi-error', 'kpi-throughput', 'kpi-fatal', 'kpi-services', 'kpi-incidents', 'impact', 'sla', 'health', 'trend', 'donut', 'categories', 'catcompare', 'volume', 'formats', 'errorrate', 'svcerrors', 'services'], tools: ['range', 'customize', 'export'] },
 		{ id: 'logs', label: 'Logs', sub: 'Search, filter and sort every event that was read', widgets: ['explorer'], tools: ['range', 'export'] },
 		{ id: 'live', label: 'Live', sub: 'New events as they are read from your sources', widgets: ['livefeed'], tools: [] },
 		{ id: 'incidents', label: 'Incidents', sub: 'Opened automatically by alert rules: acknowledge, add notes, resolve', widgets: ['incidentdesk'], tools: ['range', 'export'] },
 		{ id: 'analysis', label: 'Analysis', sub: 'Error patterns, probable root causes and recovery steps', widgets: ['aianalysis', 'incidents'], tools: ['range', 'export'] },
+		{ id: 'categories', label: 'Categories', sub: 'Your own error categories: rules, counts over time, KPIs and alerts', widgets: ['catmanager'], tools: ['range'] },
 		{ id: 'sources', label: 'Sources', sub: 'Siebel log folders and databases this app reads from', widgets: [], tools: [] },
 		{ id: 'settings', label: 'Settings', sub: 'Appearance, alerts, storage and version', widgets: [], tools: [] }
 	];
