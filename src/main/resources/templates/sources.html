@@ -126,6 +126,9 @@
 						<label class="f-file">Component name <input name="fileService" placeholder="when the file has no component column"></label>
 
 						<!-- database -->
+						<label class="f-db span-2">Connection string <small class="src-hint-inline">optional: paste what your provider or DBA gave you and the fields below are filled in</small>
+							<span class="src-path"><input name="connString" placeholder="Server=tcp:crm.database.windows.net,1433;Initial Catalog=logs;User ID=…   or   postgres://user@host:5432/db   or   jdbc:…" spellcheck="false"><button type="button" class="btn small" id="parseConnBtn">Fill in</button></span>
+						</label>
 						<label class="f-db">Database type
 							<select name="dbType"><option value="SQLSERVER">Microsoft SQL Server</option><option value="ORACLE">Oracle</option><option value="POSTGRES">PostgreSQL</option><option value="MYSQL">MySQL</option><option value="H2">H2 (file)</option><option value="CUSTOM">Other (JDBC URL)</option></select>
 						</label>
@@ -133,6 +136,14 @@
 						<label class="f-db f-hostport">Port <input name="port" type="number" placeholder="1433"></label>
 						<label class="f-db f-hostport">Database / service name <input name="databaseName" placeholder="LOGS"></label>
 						<label class="f-db span-2 f-url" hidden>JDBC URL <input name="jdbcUrl" placeholder="jdbc:..." spellcheck="false"></label>
+						<label class="f-db">Encryption
+							<select name="sslMode">
+								<option value="AUTO">Automatic (recommended)</option>
+								<option value="REQUIRE">Required (hosted / cloud databases)</option>
+								<option value="VERIFY">Required, and check the certificate</option>
+								<option value="DISABLE">Off (old servers inside the company network)</option>
+							</select>
+						</label>
 						<label class="f-db">Username <input name="username" placeholder="read-only account"></label>
 						<label class="f-db">Password <input name="password" type="password" placeholder=""></label>
 						<label class="f-db span-2">Table or SELECT query
@@ -156,6 +167,10 @@
 							<div>
 								<div class="card-title" style="font-size:13px">Columns <span class="src-auto-badge" id="autoBadge" hidden>✦ Recognised automatically</span></div>
 								<div class="card-sub" id="mapSub">Worked out from the values in each column, not just the names. Change anything that's wrong.</div>
+							</div>
+							<div class="src-seg" role="radiogroup" aria-label="How columns are chosen">
+								<button type="button" role="radio" data-colmode="auto" aria-checked="true">✦ Recognise automatically</button>
+								<button type="button" role="radio" data-colmode="manual" aria-checked="false">I'll choose the columns</button>
 							</div>
 						</div>
 						<div class="src-grid map">

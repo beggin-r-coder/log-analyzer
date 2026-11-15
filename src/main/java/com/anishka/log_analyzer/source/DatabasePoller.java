@@ -324,12 +324,30 @@ public class DatabasePoller {
 		String type = s.getDbType() == null ? "" : s.getDbType().toUpperCase(Locale.ROOT);
 		String host = notBlank(s.getHost()) ? s.getHost().trim() : "localhost";
 		String db = s.getDatabaseName() == null ? "" : s.getDatabaseName().trim();
+		String ssl = s.getSslMode() == null ? "AUTO" : s.getSslMode().toUpperCase(Locale.ROOT);
 		return switch (type) {
 		case "SQLSERVER" -> "jdbc:sqlserver://" + host + ":" + port(s, 1433) + (db.isEmpty() ? "" : ";databaseName=" + db)
-				+ ";encrypt=true;trustServerCertificate=true;loginTimeout=15";
-		case "ORACLE" -> "jdbc:oracle:thin:@//" + host + ":" + port(s, 1521) + "/" + db;
-		case "POSTGRES" -> "jdbc:postgresql://" + host + ":" + port(s, 5432) + "/" + db;
-		case "MYSQL" -> "jdbc:mysql://" + host + ":" + port(s, 3306) + "/" + db;
+				+ switch (ssl) {
+				case "VERIFY" -> ";encrypt=true;trustServerCertificate=false";
+				case "DISABLE" -> ";encrypt=false";
+				default -> ";encrypt=true;trustServerCertificate=true";
+				} + ";loginTimeout=15";
+		// cloud Oracle (Autonomous Database, OCI) uses TLS on its own port, usually 1522
+		case "ORACLE" -> ssl.equals("REQUIRE") || ssl.equals("VERIFY")
+				? "jdbc:oracle:thin:@tcps://" + host + ":" + port(s, 1522) + "/" + db + (ssl.equals("VERIFY") ? "?oracle.net.ssl_server_dn_match=true" : "")
+				: "jdbc:oracle:thin:@//" + host + ":" + port(s, 1521) + "/" + db;
+		case "POSTGRES" -> "jdbc:postgresql://" + host + ":" + port(s, 5432) + "/" + db + switch (ssl) {
+				case "REQUIRE" -> "?sslmode=require";
+				case "VERIFY" -> "?sslmode=verify-full";
+				case "DISABLE" -> "?sslmode=disable";
+				default -> "";
+				};
+		case "MYSQL" -> "jdbc:mysql://" + host + ":" + port(s, 3306) + "/" + db + switch (ssl) {
+				case "REQUIRE" -> "?sslMode=REQUIRED";
+				case "VERIFY" -> "?sslMode=VERIFY_IDENTITY";
+				case "DISABLE" -> "?sslMode=DISABLED";
+				default -> "";
+				};
 		case "H2" -> "jdbc:h2:" + db;
 		default -> throw new IllegalArgumentException("Choose a database type or enter a JDBC URL");
 		};

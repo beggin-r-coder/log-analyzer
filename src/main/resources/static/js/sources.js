@@ -48,7 +48,7 @@
 					<button class="btn small" data-act="edit">Edit</button>
 					<button class="btn ghost small" data-act="delete">Remove</button>
 				</div>
-				${s.lastError && s.enabled ? `<div class="src-err">${esc(s.lastError)}</div>` : ''}
+				${s.lastError && s.enabled ? `<div class="src-err">${esc(s.lastError)}</div>${s.hint ? `<div class="src-hint"><b>What to check:</b> ${esc(s.hint)}</div>` : ''}` : ''}
 			</div>`).join('');
 	}
 
@@ -80,6 +80,10 @@
 		$('discover').hidden = true;
 		$('autoBadge').hidden = true;
 		clearConfidence();
+		st.suggested = null;
+		st.detected = null;
+		setColMode(src ? src.autoColumns !== false : true, true);
+		MAP_FIELDS.forEach((n) => setOptions(form.elements[n], [], ''));
 		setOptions(form.elements.sheet, [], '');
 		$('testState').textContent = '';
 		$('testState').className = 'src-test-state';
@@ -102,6 +106,7 @@
 				else if (el.tagName === 'SELECT' && MAP_FIELDS.includes(el.name)) setOptions(el, src[el.name] ? [src[el.name]] : [], src[el.name]);
 				else if (el.name !== 'password') el.value = src[el.name] == null ? '' : src[el.name];
 			}
+			if (type !== 'FOLDER') $('mapSub').textContent = st.auto ? 'Saved columns. Press Test to check them against the data again.' : 'Saved columns. Press Test to load the column list.';
 			if (type === 'FILE') {
 				form.elements.filePath.value = src.path || '';
 				form.elements.fileService.value = src.defaultService || '';
@@ -115,8 +120,10 @@
 				$('mapping').hidden = false;
 			}
 		} else if (type === 'DATABASE') {
-			form.elements.dbType.value = 'SQLSERVER';
+			form.elements.dbType.value = 'ORACLE';
+			form.elements.sslMode.value = 'AUTO';
 		}
+		if (type !== 'FOLDER') $('mapping').hidden = false; // the column choice is offered from the start
 		syncDbType();
 		st.lastQuery = src ? locationKey() : null;
 		$('editor').hidden = false;
@@ -139,7 +146,7 @@
 		const f = form.elements, db = st.type === 'DATABASE', v = (n) => (f[n] && f[n].value.trim()) || null;
 		const p = { type: st.type, name: v('name') };
 		if (st.type === 'FILE') {
-			Object.assign(p, { path: v('filePath'), queryText: v('sheet'), defaultService: v('fileService'), pollSeconds: Number(f.pollSeconds.value), backfillDays: 1 });
+			Object.assign(p, { path: v('filePath'), queryText: v('sheet'), defaultService: v('fileService'), pollSeconds: Number(f.pollSeconds.value), backfillDays: 1, autoColumns: st.auto });
 			MAP_FIELDS.forEach((n) => { p[n] = v(n); });
 		} else if (!db) Object.assign(p, { path: v('path'), filePattern: v('filePattern') || '*.log', recursive: f.recursive.checked, backfillDays: Number(f.backfillDays.value), defaultService: v('defaultService') });
 		else {
@@ -147,7 +154,7 @@
 			Object.assign(p, {
 				dbType: custom ? null : f.dbType.value, jdbcUrl: custom ? v('jdbcUrl') : null, host: custom ? null : v('host'), port: custom || !v('port') ? null : Number(v('port')),
 				databaseName: custom ? null : v('databaseName'), username: v('username'), password: f.password.value || null, queryText: v('queryText'),
-				pollSeconds: Number(f.pollSeconds.value), backfillDays: Number(f.backfillDaysDb.value)
+				pollSeconds: Number(f.pollSeconds.value), backfillDays: Number(f.backfillDaysDb.value), sslMode: f.sslMode.value, autoColumns: st.auto
 			});
 			MAP_FIELDS.forEach((n) => { p[n] = v(n); });
 		}
@@ -168,7 +175,8 @@
 		try {
 			const r = await api('/api/sources/test' + (st.editing ? '?id=' + st.editing.id : ''), { method: 'POST', body: JSON.stringify(payload()) });
 			st.tested = r;
-			if (!r.ok) { s.className = 'src-test-state bad'; s.textContent = r.error; $('result').hidden = true; return; }
+			if (!r.ok) { s.className = 'src-test-state bad'; s.textContent = r.error; showHint(r.hint); return; }
+			$('hintBox') && $('hintBox').remove();
 			s.className = 'src-test-state ok';
 			if (st.type === 'FOLDER') {
 				s.textContent = r.files ? `✓ ${r.files} matching file${r.files === 1 ? '' : 's'} (${size(r.totalBytes)})` : '✓ Folder found, but no files match the pattern yet';
@@ -205,12 +213,97 @@
 			<tbody>${r.rows.map((row) => `<tr>${row.map((v) => `<td class="msg" title="${esc(v)}">${esc(v)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${r.columns.length}" class="empty">The table is empty</td></tr>`}</tbody></table></div>`;
 		$('mapping').hidden = false;
 		const fresh = st.lastQuery !== locationKey();
+		st.columns = r.columns;
+		st.suggested = r.suggested;
+		st.detected = r.detected;
 		MAP_FIELDS.forEach((n) => {
-			const el = form.elements[n], current = el.value;
-			setOptions(el, r.columns, current && r.columns.includes(current) && !fresh ? current : (r.suggested[n] || (current && r.columns.includes(current) ? current : '')));
+			const el = form.elements[n], current = el.value, keep = current && r.columns.includes(current);
+			// manual: never pre-fill; automatic: use what was recognised (a choice the user made for this table stays)
+			setOptions(el, r.columns, !st.auto ? (keep ? current : '') : keep && !fresh ? current : (r.suggested[n] || (keep ? current : '')));
 		});
 		st.lastQuery = locationKey();
-		showConfidence(r.detected, r.suggested);
+		if (st.auto) showConfidence(r.detected, r.suggested);
+		else { clearConfidence(); $('autoBadge').hidden = true; $('mapSub').textContent = `Choose which of the ${r.columns.length} columns holds what. Timestamp and message are required.`; }
+	}
+
+	function showHint(hint) {
+		$('result').hidden = true;
+		let box = $('hintBox');
+		if (!hint) { if (box) box.remove(); return; }
+		if (!box) { box = document.createElement('div'); box.id = 'hintBox'; box.className = 'src-hint'; $('result').before(box); }
+		box.innerHTML = `<b>What to check:</b> ${esc(hint)}`;
+	}
+
+	// ---------------------------------------------------------------- automatic / manual columns
+	function setColMode(auto, quiet) {
+		st.auto = auto;
+		document.querySelectorAll('[data-colmode]').forEach((b) => b.setAttribute('aria-checked', String((b.dataset.colmode === 'auto') === auto)));
+		if (quiet) return;
+		if (auto) {
+			if (st.suggested && st.columns) {
+				MAP_FIELDS.forEach((n) => setOptions(form.elements[n], st.columns, st.suggested[n] || ''));
+				showConfidence(st.detected, st.suggested);
+			} else {
+				$('mapSub').textContent = 'Press Test: the columns are recognised from the data. You can still change any of them.';
+			}
+		} else {
+			clearConfidence();
+			$('autoBadge').hidden = true;
+			MAP_FIELDS.forEach((n) => setOptions(form.elements[n], st.columns || [], ''));
+			$('mapSub').textContent = st.columns ? `Choose which of the ${st.columns.length} columns holds what. Timestamp and message are required.` : 'Press Test to load the column list, then choose which column holds what.';
+		}
+	}
+	document.querySelectorAll('[data-colmode]').forEach((b) => b.addEventListener('click', () => setColMode(b.dataset.colmode === 'auto')));
+
+	// ---------------------------------------------------------------- paste a connection string
+	/** Understands Oracle (host:port/service, host:port:SID, TNS descriptors), SQL Server / Azure, PostgreSQL, MySQL and JDBC URLs. */
+	function parseConnection(raw) {
+		const t = raw.trim(), out = {};
+		let m;
+		if (/^jdbc:/i.test(t)) {
+			out.dbType = 'CUSTOM'; out.jdbcUrl = t;
+			if ((m = t.match(/^jdbc:oracle:thin:(?:([^/@]+)(?:\/([^@]*))?)?@\/\/?([^:/?]+)(?::(\d+))?\/([^?]+)/i))) Object.assign(out, { dbType: 'ORACLE', jdbcUrl: '', username: m[1], password: m[2], host: m[3], port: m[4], databaseName: m[5] });
+			return out;
+		}
+		if (/^\(\s*description/i.test(t)) { out.dbType = 'CUSTOM'; out.jdbcUrl = 'jdbc:oracle:thin:@' + t.replace(/\s+/g, ''); return out; }
+		if ((m = t.match(/^(?:([^/@\s]+)(?:\/([^@\s]*))?@)?\/?\/?([\w.-]+):(\d+):(\w+)$/))) { // Oracle SID form
+			out.dbType = 'CUSTOM'; out.jdbcUrl = `jdbc:oracle:thin:@${m[3]}:${m[4]}:${m[5]}`; out.username = m[1]; out.password = m[2]; return out;
+		}
+		if ((m = t.match(/^(?:([^/@\s]+)(?:\/([^@\s]*))?@)?\/?\/?([\w.-]+)(?::(\d+))?\/([\w.$#-]+)$/))) { // Oracle Easy Connect: [user[/pw]@]host[:port]/service
+			return { dbType: 'ORACLE', host: m[3], port: m[4], databaseName: m[5], username: m[1], password: m[2] };
+		}
+		if ((m = t.match(/^(postgres(?:ql)?|mysql):\/\/(?:([^:@/]+)(?::([^@/]*))?@)?([^:/?]+)(?::(\d+))?\/([^?]+)(?:\?(.*))?$/i))) {
+			const q = (m[7] || '').toLowerCase();
+			return { dbType: m[1].toLowerCase() === 'mysql' ? 'MYSQL' : 'POSTGRES', username: m[2] && decodeURIComponent(m[2]), password: m[3] && decodeURIComponent(m[3]), host: m[4], port: m[5], databaseName: decodeURIComponent(m[6]),
+				sslMode: /sslmode=(require|verify-ca)|sslmode=required|ssl=true/.test(q) ? 'REQUIRE' : /verify-full|verify_identity/.test(q) ? 'VERIFY' : undefined };
+		}
+		if (/(server|data source|address)\s*=/i.test(t)) { // SQL Server / Azure SQL (ADO.NET style)
+			const kv = {};
+			t.split(';').forEach((p) => { const i = p.indexOf('='); if (i > 0) kv[p.slice(0, i).trim().toLowerCase()] = p.slice(i + 1).trim(); });
+			const server = (kv.server || kv['data source'] || kv.address || '').replace(/^tcp:/i, '');
+			const [host, port] = server.split(',');
+			return { dbType: 'SQLSERVER', host: host.split('\\')[0], port: port, databaseName: kv['initial catalog'] || kv.database, username: kv['user id'] || kv.uid || kv.user,
+				password: kv.password || kv.pwd, sslMode: /true|yes|mandatory|strict/i.test(kv.encrypt || '') ? (/true|yes/i.test(kv.trustservercertificate || '') ? 'REQUIRE' : 'VERIFY') : undefined };
+		}
+		return null;
+	}
+
+	function fillFromConnection() {
+		const raw = form.elements.connString.value;
+		if (!raw.trim()) { form.elements.connString.focus(); return; }
+		const c = parseConnection(raw);
+		if (!c) { toast("That connection string wasn't recognised. Fill in the fields below instead."); return; }
+		const f = form.elements;
+		f.dbType.value = c.dbType;
+		syncDbType();
+		['host', 'databaseName', 'username', 'jdbcUrl'].forEach((k) => { if (c[k] != null) f[k].value = c[k]; });
+		f.port.value = c.port || '';
+		if (c.password) f.password.value = c.password;
+		if (c.sslMode) f.sslMode.value = c.sslMode;
+		if (c.dbType !== 'CUSTOM') f.jdbcUrl.value = '';
+		f.connString.value = '';
+		toast(c.password ? 'Filled in. The password is stored encrypted when you save.' : 'Filled in. Add the password, then press Test.');
+		(c.password ? $('testBtn') : f.password).focus();
 	}
 
 	const locationKey = () => [form.elements.queryText.value, form.elements.filePath.value, form.elements.sheet.value, form.elements.jdbcUrl.value, form.elements.host.value, form.elements.databaseName.value].join('|');
@@ -246,7 +339,7 @@
 		btn.disabled = true;
 		try {
 			const r = await api('/api/sources/discover' + (st.editing ? '?id=' + st.editing.id : ''), { method: 'POST', body: JSON.stringify(payload()) });
-			if (!r.ok) { box.innerHTML = `<div class="src-test-state bad">${esc(r.error)}</div>`; return; }
+			if (!r.ok) { box.innerHTML = `<div class="src-test-state bad">${esc(r.error)}</div>${r.hint ? `<div class="src-hint"><b>What to check:</b> ${esc(r.hint)}</div>` : ''}`; return; }
 			if (!r.tables.length) {
 				box.innerHTML = `<div class="src-discover-head">Connected to ${esc(r.product)}, but none of the ${nf.format(r.tablesChecked)} tables looked at hold logs. Type the table name or a SELECT query instead.</div>`;
 				return;
@@ -298,6 +391,8 @@
 		} catch (e) { toast(e.message); }
 	});
 	$('discoverBtn').addEventListener('click', discover);
+	$('parseConnBtn').addEventListener('click', fillFromConnection);
+	form.elements.connString.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fillFromConnection(); } });
 	form.elements.sheet.addEventListener('change', () => { if (form.elements.filePath.value.trim()) test(); });
 	$('browseFileBtn').addEventListener('click', async () => {
 		try {

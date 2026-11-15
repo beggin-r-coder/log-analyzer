@@ -164,6 +164,7 @@ public class LogSourceService {
 		} catch (Exception e) {
 			out.put("ok", false);
 			out.put("error", e.getMessage() == null ? e.toString() : e.getMessage());
+			out.put("hint", ConnectionHints.explain(e, s));
 		}
 		return out;
 	}
@@ -184,6 +185,7 @@ public class LogSourceService {
 		} catch (Exception e) {
 			out.put("ok", false);
 			out.put("error", e.getMessage() == null ? e.toString() : e.getMessage());
+			out.put("hint", ConnectionHints.explain(e, s));
 		}
 		return out;
 	}
@@ -193,7 +195,7 @@ public class LogSourceService {
 	 * the data. Returns what was filled in, or null when nothing was needed.
 	 */
 	private Map<String, Object> autoMap(LogSource s, String password) {
-		if (LogSource.FOLDER.equals(s.getType())) return null;
+		if (LogSource.FOLDER.equals(s.getType()) || !s.isAutoColumns()) return null;
 		boolean needed = blank(s.getTsColumn()) || (blank(s.getMessageColumn()) && blank(s.getRawColumn()));
 		if (!needed) return null;
 		if (LogSource.DATABASE.equals(s.getType()) && blank(s.getQueryText())) return null;
@@ -305,6 +307,8 @@ public class LogSourceService {
 			s.setPasswordEnc(secrets.encrypt(f.password()));
 		}
 		s.setJdbcUrl(trim(f.jdbcUrl()));
+		s.setAutoColumns(f.autoColumns() == null || f.autoColumns());
+		s.setSslMode(trim(f.sslMode()) == null ? null : f.sslMode().trim().toUpperCase(Locale.ROOT));
 		s.setQueryText(trim(f.queryText()));
 		s.setTsColumn(trim(f.tsColumn()));
 		s.setLevelColumn(trim(f.levelColumn()));
@@ -334,11 +338,13 @@ public class LogSourceService {
 		if (LogSource.FILE.equals(s.getType())) {
 			if (blank(s.getPath())) throw new IllegalArgumentException("Choose the Excel workbook or CSV file");
 			if (!TabularReader.supports(Path.of(s.getPath()))) throw new IllegalArgumentException("Choose an Excel workbook (.xlsx, .xls) or a CSV file");
-			if (blank(s.getMessageColumn()) && blank(s.getRawColumn())) throw new IllegalArgumentException("No column with log messages was found; choose it under Columns");
+			if (blank(s.getMessageColumn()) && blank(s.getRawColumn())) throw new IllegalArgumentException(s.isAutoColumns()
+					? "No column with log messages was found; choose it under Columns" : "Choose the message column (press Test to load the columns)");
 			return;
 		}
 		if (blank(s.getQueryText())) throw new IllegalArgumentException("Enter a table name or a SELECT query");
-		if (blank(s.getTsColumn()) && blank(s.getIdColumn())) throw new IllegalArgumentException("No date/time column was found; choose it under Columns");
+		if (blank(s.getTsColumn()) && blank(s.getIdColumn())) throw new IllegalArgumentException(s.isAutoColumns()
+				? "No date/time column was found; choose it under Columns" : "Choose the timestamp column (press Test to load the columns)");
 		if (blank(s.getMessageColumn()) && blank(s.getRawColumn())) throw new IllegalArgumentException("No column with log messages was found; choose it under Columns");
 	}
 
@@ -371,6 +377,8 @@ public class LogSourceService {
 		m.put("username", s.getUsername());
 		m.put("hasPassword", s.getPasswordEnc() != null);
 		m.put("jdbcUrl", s.getJdbcUrl());
+		m.put("sslMode", s.getSslMode());
+		m.put("autoColumns", s.isAutoColumns());
 		m.put("queryText", s.getQueryText());
 		m.put("tsColumn", s.getTsColumn());
 		m.put("levelColumn", s.getLevelColumn());
@@ -386,6 +394,7 @@ public class LogSourceService {
 		m.put("lastRunAt", epoch(s.getLastRunAt()));
 		m.put("lastSuccessAt", epoch(s.getLastSuccessAt()));
 		m.put("lastError", s.getLastError());
+		m.put("hint", s.getLastError() == null || !LogSource.DATABASE.equals(s.getType()) ? null : ConnectionHints.explain(s.getLastError(), s));
 		m.put("eventsIngested", s.getEventsIngested());
 		m.put("filesTracked", s.getFilesTracked());
 		return m;

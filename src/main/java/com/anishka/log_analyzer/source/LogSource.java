@@ -74,6 +74,14 @@ public class LogSource {
 	@Column(name = "password_enc", length = 1000)
 	private String passwordEnc;
 
+	/** Encryption to the database: AUTO (driver default), REQUIRE, VERIFY (also check the certificate) or DISABLE. */
+	@Column(name = "ssl_mode", length = 16)
+	private String sslMode;
+
+	/** False when the user chose the columns themselves: nothing is filled in automatically. Null means true. */
+	@Column(name = "auto_columns")
+	private Boolean autoColumns;
+
 	@Column(name = "jdbc_url", length = 1000)
 	private String jdbcUrl;
 
@@ -151,6 +159,10 @@ public class LogSource {
 	public void setUsername(String username) { this.username = username; }
 	public String getPasswordEnc() { return passwordEnc; }
 	public void setPasswordEnc(String passwordEnc) { this.passwordEnc = passwordEnc; }
+	public boolean isAutoColumns() { return autoColumns == null || autoColumns; }
+	public void setAutoColumns(Boolean autoColumns) { this.autoColumns = autoColumns; }
+	public String getSslMode() { return sslMode; }
+	public void setSslMode(String sslMode) { this.sslMode = sslMode; }
 	public String getJdbcUrl() { return jdbcUrl; }
 	public void setJdbcUrl(String jdbcUrl) { this.jdbcUrl = jdbcUrl; }
 	public String getQueryText() { return queryText; }

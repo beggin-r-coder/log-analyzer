@@ -131,6 +131,21 @@ class AutoDetectTest {
 	}
 
 	@Test
+	void manualColumnModeFillsInNothing() throws Exception {
+		Path csv = dir.resolve("manual.csv");
+		Files.writeString(csv, "When,What\n2026-11-12 10:00:00,SBL-DAT-00398: Record not found\n2026-11-12 10:01:00,Saved\n");
+		SourceForm manual = new SourceForm(null, "FILE", true, csv.toString(), null, null, 1, null, null, null, null, null, null, null, null,
+				null, null, null, null, null, null, null, null, null, 15, null, false);
+		IllegalArgumentException e = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> service.create(manual));
+		assertTrue(e.getMessage().contains("Choose the message column"));
+		Map<String, Object> saved = service.create(new SourceForm(null, "FILE", true, csv.toString(), null, null, 1, null, null, null, null, null,
+				null, null, null, null, "When", null, null, "What", null, null, null, null, 15, null, false));
+		assertEquals(false, saved.get("autoColumns"));
+		assertEquals(null, saved.get("levelColumn"), "nothing added automatically");
+		assertEquals(2, sheets.poll(sources.findById(((Number) saved.get("id")).longValue()).orElseThrow()));
+	}
+
+	@Test
 	void readsAnExcelWorkbookWithATitleRowAndPicksUpNewRows() throws Exception {
 		Path xlsx = dir.resolve("Siebel errors.xlsx");
 		LocalDateTime t0 = LocalDateTime.now().minusMinutes(30);

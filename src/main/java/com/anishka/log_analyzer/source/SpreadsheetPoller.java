@@ -98,7 +98,7 @@ public class SpreadsheetPoller {
 
 	private TabularReader.Table read(LogSource src, Path file) throws IOException {
 		TabularReader.Table t = TabularReader.read(file, src.getQueryText(), this::score);
-		if (!RowMapper.notBlank(src.getMessageColumn()) && !RowMapper.notBlank(src.getRawColumn())) {
+		if (src.isAutoColumns() && !RowMapper.notBlank(src.getMessageColumn()) && !RowMapper.notBlank(src.getRawColumn())) {
 			DatabasePoller.applyMapping(src, detector.detect(t.names(), t.rows().subList(0, Math.min(200, t.rows().size()))).mapping());
 		}
 		Map<String, Integer> index = index(t.names());
