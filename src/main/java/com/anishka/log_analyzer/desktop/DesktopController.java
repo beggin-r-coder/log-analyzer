@@ -59,9 +59,11 @@ public class DesktopController {
 
 	/** Opens the native folder chooser on this computer and returns the chosen path. */
 	@PostMapping("/browse")
-	public ResponseEntity<Map<String, Object>> browse(@RequestParam(required = false) String start) throws Exception {
+	public ResponseEntity<Map<String, Object>> browse(@RequestParam(required = false) String start,
+			@RequestParam(defaultValue = "folder") String mode) throws Exception {
+		boolean file = "file".equals(mode);
 		if (GraphicsEnvironment.isHeadless()) {
-			return ResponseEntity.badRequest().body(Map.of("error", "No folder picker available; type the path instead"));
+			return ResponseEntity.badRequest().body(Map.of("error", "No file picker available; type the path instead"));
 		}
 		AtomicReference<String> chosen = new AtomicReference<>();
 		SwingUtilities.invokeAndWait(() -> {
@@ -70,11 +72,19 @@ public class DesktopController {
 			owner.setUndecorated(true);
 			owner.setLocationRelativeTo(null);
 			owner.setVisible(true);
-			JFileChooser fc = new JFileChooser(start != null && new File(start).isDirectory() ? new File(start) : null);
-			fc.setDialogTitle("Choose the folder that contains the log files");
-			fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+			File from = start == null || start.isBlank() ? null : new File(start);
+			if (from != null && from.isFile()) from = from.getParentFile();
+			JFileChooser fc = new JFileChooser(from != null && from.isDirectory() ? from : null);
 			fc.setAcceptAllFileFilterUsed(false);
-			if (fc.showDialog(owner, "Use this folder") == JFileChooser.APPROVE_OPTION) {
+			if (file) {
+				fc.setDialogTitle("Choose an Excel workbook or CSV file");
+				fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+				fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Excel and CSV files (*.xlsx, *.xls, *.csv)", "xlsx", "xlsm", "xls", "csv", "tsv", "txt"));
+			} else {
+				fc.setDialogTitle("Choose the folder that contains the log files");
+				fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+			}
+			if (fc.showDialog(owner, file ? "Use this file" : "Use this folder") == JFileChooser.APPROVE_OPTION) {
 				chosen.set(fc.getSelectedFile().getAbsolutePath());
 			}
 			owner.dispose();

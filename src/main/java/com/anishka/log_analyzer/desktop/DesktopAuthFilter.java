@@ -79,7 +79,7 @@ public class DesktopAuthFilter implements Filter {
 			}
 			return;
 		}
-		if (path.startsWith("/css/") || path.startsWith("/js/") || path.startsWith("/favicon") || path.startsWith("/actuator/health")) {
+		if (path.startsWith("/css/") || path.startsWith("/js/") || path.startsWith("/vendor/") || path.startsWith("/favicon") || path.startsWith("/actuator/health")) {
 			chain.doFilter(req, res);
 			return;
 		}

@@ -17,7 +17,7 @@ import jakarta.persistence.Table;
 @Table(name = "log_sources")
 public class LogSource {
 
-	public static final String FOLDER = "FOLDER", DATABASE = "DATABASE";
+	public static final String FOLDER = "FOLDER", DATABASE = "DATABASE", FILE = "FILE";
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)

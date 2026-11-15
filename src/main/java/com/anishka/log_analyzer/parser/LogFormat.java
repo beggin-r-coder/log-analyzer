@@ -15,6 +15,7 @@ public enum LogFormat {
 	SYSLOG_RFC5424("Syslog RFC 5424"),
 	SYSLOG_RFC3164("Syslog RFC 3164"),
 	DATABASE("Database rows"),
+	SPREADSHEET("Excel / CSV rows"),
 	GENERIC("Generic / unstructured");
 
 	private final String label;

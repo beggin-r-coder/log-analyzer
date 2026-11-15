@@ -1,5 +1,8 @@
-# Builds the Windows desktop app (LogAnalyzer.exe) on a Windows machine, starts it and checks it works,
-# then publishes a portable zip and an .msi installer as downloadable artifacts (and on v* tags, a release).
+# Builds the Windows desktop app on a Windows machine, starts it and checks it works, then publishes:
+#   LogAnalyzer.exe   one file, nothing to install: double-click and it runs (Java included)
+#   portable zip      the same app as a folder
+#   .msi              optional per-user installer with Start menu entry
+# as downloadable artifacts (and on v* tags, a GitHub release).
 name: Windows app
 
 on:
@@ -44,14 +47,42 @@ jobs:
           Compress-Archive -Path dist/LogAnalyzer -DestinationPath "dist/LogAnalyzer-$env:APP_VERSION-portable.zip"
           Get-ChildItem dist | Format-Table Name, Length
 
-      - name: Start the packaged app and check it works
+      - name: Build the single-file LogAnalyzer.exe (no installation)
         shell: pwsh
         run: |
-          $app = Start-Process -FilePath dist/LogAnalyzer/LogAnalyzer.exe -ArgumentList '--no-window' -PassThru
+          # a small launcher compiled with the C# compiler that comes with Windows, with the app appended to it
+          $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          "static class AppVersion { public const string Value = `"$env:APP_VERSION`"; }" | Set-Content target/AppVersion.cs
+          & $csc /nologo /optimize+ /target:winexe /out:target/launcher.exe /win32icon:packaging/windows/LogAnalyzer.ico `
+            /r:System.IO.Compression.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll `
+            packaging/windows/launcher/Launcher.cs target/AppVersion.cs
+          if ($LASTEXITCODE -ne 0) { throw 'The launcher did not compile' }
+
+          $zip = "dist/LogAnalyzer-$env:APP_VERSION-portable.zip"
+          $out = [IO.File]::Create((Join-Path $PWD 'dist/LogAnalyzer.exe'))
+          try {
+            foreach ($part in @('target/launcher.exe', $zip)) {
+              $in = [IO.File]::OpenRead((Join-Path $PWD $part)); $in.CopyTo($out); $in.Dispose()
+            }
+            $len = (Get-Item $zip).Length
+            $out.Write([BitConverter]::GetBytes([long]$len), 0, 8)
+            $magic = [Text.Encoding]::ASCII.GetBytes('LAPAYLD1'); $out.Write($magic, 0, 8)
+          } finally { $out.Dispose() }
+          Get-Item dist/LogAnalyzer.exe | Format-Table Name, Length
+
+      - name: Start the single LogAnalyzer.exe and check it works
+        shell: pwsh
+        run: |
           $appHome = Join-Path $env:LOCALAPPDATA 'LogAnalyzer'
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $app = Start-Process -FilePath dist/LogAnalyzer.exe -ArgumentList '--no-window' -PassThru
           $file = Join-Path $appHome 'instance.properties'
           for ($i = 0; $i -lt 120 -and -not (Test-Path $file); $i++) { Start-Sleep 1 }
-          if (-not (Test-Path $file)) { Get-Content (Join-Path $appHome 'logs/log-analyzer.log') -Tail 80; throw 'The app did not start' }
+          if (-not (Test-Path $file)) { Get-ChildItem -Recurse $appHome -Depth 2 | Select-Object -First 40 FullName; Get-Content (Join-Path $appHome 'logs/log-analyzer.log') -Tail 80 -ErrorAction SilentlyContinue; throw 'The app did not start' }
+          Write-Host "First start (unpacking included) took $([int]$sw.Elapsed.TotalSeconds) s"
+          $unpacked = Get-ChildItem (Join-Path $appHome 'app') -Directory
+          Write-Host "Unpacked into: $($unpacked.FullName)"
+          if (-not (Test-Path (Join-Path $unpacked[0].FullName '.complete'))) { throw 'The app was not unpacked completely' }
           $props = Get-Content $file
           $port = ($props | Where-Object { $_ -like 'port=*' }) -replace '^port=', ''
           $enter = (($props | Where-Object { $_ -like 'url=*' }) -replace '^url=', '') -replace '\\', ''
@@ -81,6 +112,22 @@ jobs:
           if (-not $app.WaitForExit(30000)) { throw 'The app did not quit' }
           Write-Host 'Quit cleanly'
 
+          # second start: already unpacked, so it goes straight to the app
+          Remove-Item $file -ErrorAction SilentlyContinue
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $app = Start-Process -FilePath dist/LogAnalyzer.exe -ArgumentList '--no-window' -PassThru
+          for ($i = 0; $i -lt 120 -and -not (Test-Path $file); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path $file)) { throw 'The app did not start the second time' }
+          Write-Host "Second start took $([int]$sw.Elapsed.TotalSeconds) s"
+          $props = Get-Content $file
+          $port = ($props | Where-Object { $_ -like 'port=*' }) -replace '^port=', ''
+          $enter = (($props | Where-Object { $_ -like 'url=*' }) -replace '^url=', '') -replace '\\', ''
+          $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          Invoke-WebRequest $enter -WebSession $s -UseBasicParsing | Out-Null
+          Invoke-WebRequest "http://127.0.0.1:$port/vendor/chart.umd.min.js" -WebSession $s -UseBasicParsing | Out-Null
+          Invoke-RestMethod -Method Post "http://127.0.0.1:$port/api/desktop/quit" -WebSession $s | Out-Null
+          if (-not $app.WaitForExit(30000)) { throw 'The app did not quit the second time' }
+
       - name: Build the .msi installer
         continue-on-error: true
         shell: pwsh
@@ -97,6 +144,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
+          name: LogAnalyzer-exe-${{ env.APP_VERSION }}
+          path: dist/LogAnalyzer.exe
+          compression-level: 0
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
           name: LogAnalyzer-windows-${{ env.APP_VERSION }}
           path: |
             dist/*.zip
@@ -108,4 +162,4 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME (Get-ChildItem dist/*.zip, dist/*.msi).FullName --generate-notes --title "Log Analyzer $env:GITHUB_REF_NAME"
+        run: gh release create $env:GITHUB_REF_NAME (Get-ChildItem dist/LogAnalyzer.exe, dist/*.zip, dist/*.msi).FullName --generate-notes --title "Log Analyzer $env:GITHUB_REF_NAME"

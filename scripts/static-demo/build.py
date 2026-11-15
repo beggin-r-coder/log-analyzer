@@ -85,6 +85,7 @@ def to_static(html, page):
     # libraries served from the site itself; the browser backend loads before any page script
     html = re.sub(r'<script src="https://cdn\.jsdelivr\.net/npm/chart\.js@[^"]+"></script>',
                   '<script src="vendor/chart.umd.min.js"></script>', html)
+    html = re.sub(r'"/vendor/([\w.\-]+?)(?:-[0-9a-f]{32})?\.js"', r'"vendor/\1.js"', html)
     backend = '<script src="js/demo-data.js"></script>\n\t<script src="js/demo-backend.js"></script>'
     html = re.sub(r'<script src="js/http\.js"></script>', '', html)
     html = html.replace('</title>', '</title>\n\t' + backend, 1)

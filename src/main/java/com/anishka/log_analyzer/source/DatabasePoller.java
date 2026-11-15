@@ -1,6 +1,7 @@
 package com.anishka.log_analyzer.source;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -8,8 +9,6 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +24,6 @@ import org.springframework.stereotype.Service;
 
 import com.anishka.log_analyzer.parser.LogFormat;
 import com.anishka.log_analyzer.parser.ParsedLog;
-import com.anishka.log_analyzer.parser.UniversalLogParser;
 import com.anishka.log_analyzer.service.LogIngestionService;
 
 /**
@@ -38,18 +36,27 @@ public class DatabasePoller {
 
 	private static final Logger log = LoggerFactory.getLogger(DatabasePoller.class);
 	static final int MAX_ROWS = 5000;
+	private static final java.time.format.DateTimeFormatter SHOW_TS = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 	private static final Pattern IDENT = Pattern.compile("[A-Za-z_][A-Za-z0-9_$#]*(\\.[A-Za-z_][A-Za-z0-9_$#]*){0,2}");
 
 	private final LogSourceRepository sources;
-	private final UniversalLogParser parser;
+	private static final Pattern SYSTEM_SCHEMA = Pattern.compile("(?i)information_schema|pg_catalog|pg_toast|sys|system|mysql|performance_schema|"
+			+ "ctxsys|mdsys|xdb|ordsys|ordplugins|ordata|olapsys|outln|dbsnmp|appqossys|wmsys|exfsys|lbacsys|dvsys|gsmadmin_internal|"
+			+ "ojvmsys|audsys|apex_.*|flows_.*|si_informtn_schema|anonymous|xs\\$null|dbsfwuser|remote_scheduler_agent|gsmcatuser|"
+			+ "sysman|mgmt_view|db_owner|db_.*|guest");
+
 	private final LogIngestionService ingestion;
 	private final SecretBox secrets;
+	private final ColumnDetector detector;
+	private final RowMapper rowMapper;
 
-	public DatabasePoller(LogSourceRepository sources, UniversalLogParser parser, LogIngestionService ingestion, SecretBox secrets) {
+	public DatabasePoller(LogSourceRepository sources, LogIngestionService ingestion, SecretBox secrets, ColumnDetector detector,
+			RowMapper rowMapper) {
 		this.sources = sources;
-		this.parser = parser;
 		this.ingestion = ingestion;
 		this.secrets = secrets;
+		this.detector = detector;
+		this.rowMapper = rowMapper;
 	}
 
 	@Scheduled(fixedDelayString = "${app.sources.db-tick-ms:5000}", initialDelayString = "${app.sources.initial-delay-ms:4000}")
@@ -121,101 +128,178 @@ public class DatabasePoller {
 		return stored;
 	}
 
-	/** Connects and returns the first rows of the table / query with a suggested column mapping. */
+	/** Connects and returns the first rows of the table / query, with each column's role worked out from the data. */
 	public Map<String, Object> preview(LogSource src, String plainPassword) throws SQLException {
-		try (Connection c = connect(src, plainPassword);
-				PreparedStatement ps = c.prepareStatement("SELECT * FROM " + from(src))) {
-			ps.setMaxRows(10);
-			ps.setQueryTimeout(30);
+		try (Connection c = connect(src, plainPassword)) {
+			Sample sample = sample(c, from(src), 200, 30);
+			ColumnDetector.Detection d = detector.detect(sample.names(), sample.rows());
+			Map<String, Object> out = new LinkedHashMap<>();
+			out.put("product", c.getMetaData().getDatabaseProductName() + " " + c.getMetaData().getDatabaseProductVersion());
+			out.put("columns", sample.names());
+			out.put("rows", display(sample.rows(), 10));
+			out.put("suggested", d.mapping());
+			out.put("detected", detection(d));
+			return out;
+		}
+	}
+
+	/**
+	 * Looks through the database for tables and views that hold logs: likely names are checked first, a sample
+	 * of rows is read from each and scored, and the best candidates come back with their column roles worked out.
+	 */
+	public Map<String, Object> discover(LogSource src, String plainPassword) throws SQLException {
+		long deadline = System.currentTimeMillis() + 40_000;
+		try (Connection c = connect(src, plainPassword)) {
+			DatabaseMetaData md = c.getMetaData();
+			String currentSchema = null;
+			try {
+				currentSchema = c.getSchema();
+			} catch (SQLException | AbstractMethodError e) {
+				// older drivers
+			}
+			List<String[]> tables = new ArrayList<>();
+			try (ResultSet rs = md.getTables(c.getCatalog(), null, "%", new String[] { "TABLE", "VIEW" })) {
+				while (rs.next() && tables.size() < 20000) {
+					String schema = rs.getString("TABLE_SCHEM"), name = rs.getString("TABLE_NAME");
+					if (name == null || SYSTEM_SCHEMA.matcher(schema == null ? "" : schema).matches()) continue;
+					String q = schema == null || schema.isBlank() || schema.equalsIgnoreCase(currentSchema) ? name : schema + "." + name;
+					if (IDENT.matcher(q).matches()) tables.add(new String[] { q, name, rs.getString("TABLE_TYPE") });
+				}
+			}
+			// likely log tables first; in a small database every table is looked at
+			tables.sort(java.util.Comparator.comparingInt((String[] t) -> -nameScore(t[1])));
+			List<String[]> candidates = tables.size() <= 40 ? tables
+					: tables.stream().filter(t -> nameScore(t[1]) > 0).limit(25).toList();
+			List<Map<String, Object>> found = new ArrayList<>();
+			for (String[] t : candidates) {
+				if (System.currentTimeMillis() > deadline || found.size() >= 40) break;
+				try {
+					Sample sample = sample(c, t[0], 100, 10);
+					if (sample.rows().isEmpty()) continue;
+					ColumnDetector.Detection d = detector.detect(sample.names(), sample.rows());
+					int score = Math.min(100, d.logLikeness() + Math.min(10, nameScore(t[1]) * 3));
+					if (score < 40) continue;
+					Map<String, Object> m = new LinkedHashMap<>();
+					m.put("table", t[0]);
+					m.put("type", "VIEW".equalsIgnoreCase(t[2]) ? "view" : "table");
+					m.put("score", score);
+					m.put("columns", sample.names());
+					m.put("sampleRows", sample.rows().size());
+					m.put("suggested", d.mapping());
+					m.put("detected", detection(d));
+					found.add(m);
+				} catch (SQLException | RuntimeException e) {
+					log.debug("Skipped {} while looking for log tables: {}", t[0], e.toString());
+				}
+			}
+			found.sort(java.util.Comparator.comparingInt((Map<String, Object> m) -> -(int) m.get("score")));
+			Map<String, Object> out = new LinkedHashMap<>();
+			out.put("product", md.getDatabaseProductName() + " " + md.getDatabaseProductVersion());
+			out.put("tablesInDatabase", tables.size());
+			out.put("tablesChecked", candidates.size());
+			out.put("tables", found.size() > 12 ? found.subList(0, 12) : found);
+			return out;
+		}
+	}
+
+	/** Higher for names that suggest logs (Siebel: S_SRM_REQUEST, S_AUDIT_ITEM, EIM / workflow logs). */
+	static int nameScore(String table) {
+		String t = table.toLowerCase(Locale.ROOT);
+		int s = 0;
+		if (t.matches(".*(log|logs|logging)(_.*|$)|.*_log.*|^log.*")) s += 3;
+		if (t.matches(".*(audit|event|error|trace|alert|incident|exception|fault).*")) s += 2;
+		if (t.matches(".*(history|hist|msg|message|journal|activity|monitor|s_srm_|s_audit_item|eim_|wf_).*")) s += 1;
+		return s;
+	}
+
+	record Sample(List<String> names, List<List<Object>> rows) {
+	}
+
+	private static Sample sample(Connection c, String from, int maxRows, int timeoutSeconds) throws SQLException {
+		try (PreparedStatement ps = c.prepareStatement("SELECT * FROM " + from)) {
+			ps.setMaxRows(maxRows);
+			ps.setQueryTimeout(timeoutSeconds);
 			try (ResultSet rs = ps.executeQuery()) {
 				ResultSetMetaData md = rs.getMetaData();
 				List<String> names = new ArrayList<>();
 				for (int i = 1; i <= md.getColumnCount(); i++) names.add(md.getColumnLabel(i));
-				List<List<String>> rows = new ArrayList<>();
-				while (rs.next()) {
-					List<String> r = new ArrayList<>();
-					for (int i = 1; i <= names.size(); i++) {
-						Object o = rs.getObject(i);
-						String v = o == null ? "" : String.valueOf(o);
-						r.add(v.length() > 160 ? v.substring(0, 159) + "…" : v);
-					}
+				List<List<Object>> rows = new ArrayList<>();
+				while (rs.next() && rows.size() < maxRows) {
+					List<Object> r = new ArrayList<>();
+					for (int i = 1; i <= names.size(); i++) r.add(value(rs.getObject(i)));
 					rows.add(r);
 				}
-				Map<String, Object> out = new LinkedHashMap<>();
-				out.put("product", c.getMetaData().getDatabaseProductName() + " " + c.getMetaData().getDatabaseProductVersion());
-				out.put("columns", names);
-				out.put("rows", rows);
-				out.put("suggested", suggest(names));
-				return out;
+				return new Sample(names, rows);
 			}
 		}
+	}
+
+	/** JDBC values the detector understands: large text and odd driver types become strings. */
+	private static Object value(Object o) throws SQLException {
+		if (o instanceof java.sql.Clob clob) {
+			long len = Math.min(clob.length(), 20000);
+			return clob.getSubString(1, (int) len);
+		}
+		if (o instanceof Number || o instanceof java.util.Date || o instanceof java.time.temporal.Temporal || o == null) return o;
+		if (o instanceof byte[]) return null;
+		String s = o.toString();
+		// Oracle TIMESTAMP and similar driver types print as dates
+		return s;
+	}
+
+	static List<List<String>> display(List<List<Object>> rows, int max) {
+		List<List<String>> out = new ArrayList<>();
+		for (List<Object> r : rows.subList(0, Math.min(max, rows.size()))) {
+			List<String> line = new ArrayList<>();
+			for (Object o : r) {
+				String v = o == null ? "" : o instanceof LocalDateTime t ? t.format(SHOW_TS) : o instanceof java.sql.Timestamp t ? t.toLocalDateTime().format(SHOW_TS)
+						: o instanceof Double d && d == Math.rint(d) && Math.abs(d) < 1e15 ? String.valueOf(d.longValue()) : String.valueOf(o);
+				line.add(v.length() > 160 ? v.substring(0, 159) + "…" : v);
+			}
+			out.add(line);
+		}
+		return out;
+	}
+
+	static Map<String, Object> detection(ColumnDetector.Detection d) {
+		Map<String, Object> m = new LinkedHashMap<>();
+		m.put("confidence", d.confidence());
+		m.put("reasons", d.reasons());
+		m.put("logLikeness", d.logLikeness());
+		return m;
+	}
+
+	/** Fills in any unmapped columns from a sample of the data (used when a source is saved without a mapping). */
+	public void autoMap(LogSource src, String plainPassword) throws SQLException {
+		try (Connection c = connect(src, plainPassword)) {
+			Sample sample = sample(c, from(src), 200, 30);
+			applyMapping(src, detector.detect(sample.names(), sample.rows()).mapping());
+		}
+	}
+
+	static void applyMapping(LogSource s, Map<String, String> m) {
+		if (!notBlank(s.getTsColumn())) s.setTsColumn(m.get("tsColumn"));
+		if (!notBlank(s.getMessageColumn()) && !notBlank(s.getRawColumn())) {
+			s.setMessageColumn(m.get("messageColumn"));
+			s.setRawColumn(m.get("rawColumn"));
+		}
+		if (!notBlank(s.getLevelColumn())) s.setLevelColumn(m.get("levelColumn"));
+		if (!notBlank(s.getServiceColumn())) s.setServiceColumn(m.get("serviceColumn"));
+		if (!notBlank(s.getTraceColumn())) s.setTraceColumn(m.get("traceColumn"));
+		if (!notBlank(s.getHostColumn())) s.setHostColumn(m.get("hostColumn"));
+		if (!notBlank(s.getIdColumn())) s.setIdColumn(m.get("idColumn"));
 	}
 
 	// ------------------------------------------------------------------ mapping
 
 	private List<ParsedLog> map(LogSource src, ResultSet rs, Map<String, Integer> cols) throws SQLException {
-		String service = notBlank(src.getServiceColumn()) ? rs.getString(col(cols, src.getServiceColumn())) : null;
-		if (service == null || service.isBlank()) {
-			service = notBlank(src.getDefaultService()) ? src.getDefaultService() : src.getName();
-		}
-		if (notBlank(src.getRawColumn())) {
-			String raw = rs.getString(col(cols, src.getRawColumn()));
-			List<ParsedLog> parsed = parser.parse(raw, service);
-			LocalDateTime t = notBlank(src.getTsColumn()) ? timestamp(rs.getObject(col(cols, src.getTsColumn()))) : null;
-			if (t != null) parsed.forEach(p -> p.timestamp(t));
-			return parsed;
-		}
-		ParsedLog p = new ParsedLog().format(LogFormat.DATABASE).service(service.length() > 64 ? service.substring(0, 64) : service);
-		p.timestamp(notBlank(src.getTsColumn()) ? timestamp(rs.getObject(col(cols, src.getTsColumn()))) : null);
-		String msg = notBlank(src.getMessageColumn()) ? rs.getString(col(cols, src.getMessageColumn())) : null;
-		p.message(msg == null ? "" : msg);
-		String level = notBlank(src.getLevelColumn()) ? rs.getString(col(cols, src.getLevelColumn())) : null;
-		p.level(level(level, p.getMessage()));
-		if (notBlank(src.getTraceColumn())) p.traceId(rs.getString(col(cols, src.getTraceColumn())));
-		if (notBlank(src.getHostColumn())) p.host(rs.getString(col(cols, src.getHostColumn())));
-		p.rawLine(p.getMessage());
-		if (p.getTimestamp() == null) p.timestamp(LocalDateTime.now());
-		return List.of(p);
-	}
-
-	/** Text levels (ERROR, warning, Sev 2…) or numeric Siebel-style severities 0-5. */
-	static String level(String raw, String message) {
-		if (raw != null && raw.strip().matches("[0-5]")) {
-			return UniversalLogParser.siebelLevel("GenericLog", "Generic", Integer.parseInt(raw.strip()), message == null ? "" : message);
-		}
-		String l = UniversalLogParser.normalizeLevel(raw);
-		return l != null ? l : "INFO";
+		List<Object> row = new ArrayList<>();
+		for (int i = 1; i <= cols.size(); i++) row.add(value(rs.getObject(i)));
+		return rowMapper.map(src, name -> row.get(col(cols, name) - 1), LogFormat.DATABASE);
 	}
 
 	static LocalDateTime timestamp(Object o) {
-		if (o == null) return null;
-		if (o instanceof Timestamp t) return t.toLocalDateTime();
-		if (o instanceof LocalDateTime t) return t;
-		if (o instanceof OffsetDateTime t) return t.atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
-		if (o instanceof java.util.Date d) return LocalDateTime.ofInstant(d.toInstant(), ZoneId.systemDefault());
-		if (o instanceof Number n) return LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(n.longValue() > 99_999_999_999L ? n.longValue() : n.longValue() * 1000), ZoneId.systemDefault());
-		try {
-			return LocalDateTime.parse(o.toString().strip().replace(' ', 'T').replaceAll("\\.\\d+$", ""));
-		} catch (RuntimeException e) {
-			return null;
-		}
-	}
-
-	/** Guesses which column is which from common names (Siebel, log4j tables, application audit tables). */
-	static Map<String, String> suggest(List<String> names) {
-		Map<String, String> m = new LinkedHashMap<>();
-		for (String n : names) {
-			String l = n.toLowerCase(Locale.ROOT);
-			if (!m.containsKey("tsColumn") && l.matches(".*(timestamp|time|date|created|logged|_dt|^ts$).*")) m.put("tsColumn", n);
-			else if (!m.containsKey("levelColumn") && l.matches(".*(level|severity|^sev$|priority|loglevel).*")) m.put("levelColumn", n);
-			else if (!m.containsKey("messageColumn") && l.matches(".*(message|^msg$|text|description|details|error_desc).*")) m.put("messageColumn", n);
-			else if (!m.containsKey("serviceColumn") && l.matches(".*(component|service|application|^app$|module|source).*")) m.put("serviceColumn", n);
-			else if (!m.containsKey("traceColumn") && l.matches(".*(sarm|trace|correlation|request_id|session).*")) m.put("traceColumn", n);
-			else if (!m.containsKey("hostColumn") && l.matches(".*(host|server_name|machine|node).*")) m.put("hostColumn", n);
-			else if (!m.containsKey("rawColumn") && l.matches(".*(raw|log_line|line_text).*")) m.put("rawColumn", n);
-			else if (!m.containsKey("idColumn") && l.matches("(id|row_id|log_id|seq|sequence|.*_seq)")) m.put("idColumn", n);
-		}
-		return m;
+		return Timestamps.parse(o);
 	}
 
 	// ------------------------------------------------------------------ connection

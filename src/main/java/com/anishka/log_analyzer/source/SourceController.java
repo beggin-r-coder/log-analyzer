@@ -72,6 +72,11 @@ public class SourceController {
 		return service.test(form, id);
 	}
 
+	@PostMapping("/discover")
+	public Map<String, Object> discover(@RequestBody SourceForm form, @RequestParam(required = false) Long id) {
+		return service.discover(form, id);
+	}
+
 	@PostMapping("/sample")
 	public Map<String, Object> sample() throws IOException {
 		return service.createSample();

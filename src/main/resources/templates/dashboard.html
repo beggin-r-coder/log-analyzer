@@ -17,7 +17,9 @@
 		<link rel="stylesheet" th:href="@{/css/sources.css}" href="/css/sources.css">
 		<link rel="stylesheet" th:href="@{/css/app-shell.css}" href="/css/app-shell.css">
 	</th:block>
-	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+	<!-- bundled, so charts and PDF export work on machines without internet access -->
+	<script th:src="@{/vendor/chart.umd.min.js}" src="/vendor/chart.umd.min.js"></script>
+	<script>window.APP_PDF_LIBS = ["/vendor/jspdf.umd.min.js", "/vendor/jspdf.plugin.autotable.min.js"];</script>
 </head>
 
 <body th:classappend="${desktop} ? 'app' : ''">

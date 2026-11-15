@@ -46,11 +46,16 @@ hosting and without installing Java.
 **Download:** every push builds it on a Windows machine with GitHub Actions (*Actions → Windows app → latest run →
 Artifacts*):
 
-- `LogAnalyzer-1.0.0-portable.zip`: unzip anywhere and run `LogAnalyzer\LogAnalyzer.exe` (no admin rights needed).
-- `LogAnalyzer-1.0.0.msi`: per-user installer with a Start-menu entry and desktop shortcut.
+- **`LogAnalyzer.exe`** (artifact `LogAnalyzer-exe-1.0.0`): **one file, nothing to install.** Copy it anywhere
+  (Desktop, Downloads, a USB stick) and double-click. Java is inside it. The first start unpacks the app once into
+  `%LOCALAPPDATA%\LogAnalyzer\app` (a few seconds, with a progress window; no admin rights); later starts go straight
+  to the app, and a newer `LogAnalyzer.exe` replaces the old unpacked copy.
+- `LogAnalyzer-1.0.0-portable.zip`: the same app as a folder; unzip and run `LogAnalyzer\LogAnalyzer.exe`.
+- `LogAnalyzer-1.0.0.msi`: optional per-user installer with a Start-menu entry and desktop shortcut.
 
-Tags named `v*` also attach both files to a GitHub release. The workflow starts the packaged `.exe`, connects the
-sample Siebel logs and checks the dashboard before publishing anything.
+Tags named `v*` also attach all three to a GitHub release. The workflow starts the single `LogAnalyzer.exe` (first
+start with unpacking, then a second start), connects the sample Siebel logs and checks the dashboard before
+publishing anything. Charts and PDF export are bundled, so the app works on machines without internet access.
 
 **What it does:**
 
@@ -69,11 +74,22 @@ sample Siebel logs and checks the dashboard before publishing anything.
   saved so restarts continue where they stopped, rotated files are read again, and a still-growing event (multi-line
   SQL) is held back until it is complete. The Siebel header of each file is applied even when reading from the middle.
   On first scan, files not changed within the chosen history window are only followed from then on.
-- **Database:** SQL Server, Oracle, PostgreSQL or MySQL (drivers included), or any JDBC URL. Enter a table or a SELECT,
-  click **Test** to see the first rows, and map the columns (suggested automatically): timestamp, message, level or
-  Siebel severity 0-5, component, SARM / trace id, host, or a column with complete raw log lines. Only rows newer than
-  the last one read are fetched (by an increasing id column, or by timestamp). Use a read-only account. Passwords are
-  stored encrypted (AES-GCM, key in the user's profile) and never sent back to the browser.
+- **Database:** SQL Server, Oracle, PostgreSQL or MySQL (drivers included), or any JDBC URL. Use a read-only account.
+  - **Find log tables:** after entering the connection, Log Analyzer looks through the database itself (likely names
+    such as `*_LOG`, `S_SRM_REQUEST`, `S_AUDIT_ITEM` first), reads a sample of rows from each table and ranks the ones
+    that hold logs, so customer or lookup tables are left out. Pick one, or type a table name or a SELECT.
+  - **Columns are recognised from the data, not the names:** dates/times in any common format (or epoch numbers),
+    log levels or Siebel severities 0-5, free-text messages, complete raw log lines (any format the parser knows),
+    SARM / trace / correlation ids, host names and IPs, component names and increasing row ids. Each choice shows how
+    sure it is and why (hover the tag); change anything that's wrong. Columns named `F1`…`F6` work as well as
+    `LOG_TIME`. Saving without a mapping maps the columns automatically.
+  - Only rows newer than the last one read are fetched (by the increasing id column, or by timestamp). Passwords are
+    stored encrypted (AES-GCM, key in the user's profile) and never sent back to the browser.
+- **Excel or CSV file:** `.xlsx`, `.xlsm`, `.xls`, `.csv` or `.tsv`, local or on a share. The sheet that looks most
+  like a log is chosen (or pick one), title rows above the table are skipped, CSV delimiters (`,` `;` tab `|`) and
+  encodings (UTF-8, UTF-16, Windows-1252) are detected, and the columns are recognised as for databases. The file is
+  read again whenever it is saved; only rows added since the last read are stored. A workbook that is open in Excel
+  can still be read.
 - **Try with sample Siebel logs:** writes realistic Siebel component logs into a folder and follows it, to try the app
   without access to a Siebel server.
 
@@ -83,6 +99,10 @@ sample Siebel logs and checks the dashboard before publishing anything.
 mvnw.cmd -DskipTests package
 jpackage --type app-image --name LogAnalyzer --input target --main-jar log-analyzer-1.0.0.jar --icon packaging\windows\LogAnalyzer.ico --java-options "-Dapp.launch=desktop"
 ```
+
+The single-file `LogAnalyzer.exe` is that folder zipped and appended to a small launcher
+(`packaging/windows/launcher/Launcher.cs`, compiled with the C# compiler that ships with Windows); see the
+*Build the single-file LogAnalyzer.exe* step in `.github/workflows/windows-app.yml`.
 
 Without packaging, `java -jar target/log-analyzer-1.0.0.jar --desktop` runs the same desktop mode on any OS.
 

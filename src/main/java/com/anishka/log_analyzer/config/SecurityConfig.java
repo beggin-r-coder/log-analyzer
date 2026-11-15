@@ -42,7 +42,7 @@ public class SecurityConfig {
 			return http.build();
 		}
 		http.authorizeHttpRequests(a -> a
-				.requestMatchers("/login", "/css/**", "/js/**", "/favicon.svg", "/favicon.ico", "/error",
+				.requestMatchers("/login", "/css/**", "/js/**", "/vendor/**", "/favicon.svg", "/favicon.ico", "/error",
 						"/actuator/health", "/actuator/health/**")
 				.permitAll()
 				// actions that affect everyone or write data are for the admin only;

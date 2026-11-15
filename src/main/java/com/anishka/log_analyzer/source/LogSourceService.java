@@ -30,18 +30,20 @@ public class LogSourceService {
 	private final SourceFileStateRepository fileStates;
 	private final FolderTailer tailer;
 	private final DatabasePoller poller;
+	private final SpreadsheetPoller sheets;
 	private final SiebelSampleWriter sampleWriter;
 	private final SecretBox secrets;
 	private final UniversalLogParser parser;
 	private final Path sampleDir;
 
 	public LogSourceService(LogSourceRepository sources, SourceFileStateRepository fileStates, FolderTailer tailer,
-			DatabasePoller poller, SiebelSampleWriter sampleWriter, SecretBox secrets, UniversalLogParser parser,
+			DatabasePoller poller, SpreadsheetPoller sheets, SiebelSampleWriter sampleWriter, SecretBox secrets, UniversalLogParser parser,
 			@Value("${app.sources.sample-dir:}") String sampleDir, @Value("${DATA_DIR:./data}") String dataDir) {
 		this.sources = sources;
 		this.fileStates = fileStates;
 		this.tailer = tailer;
 		this.poller = poller;
+		this.sheets = sheets;
 		this.sampleWriter = sampleWriter;
 		this.secrets = secrets;
 		this.parser = parser;
@@ -62,14 +64,18 @@ public class LogSourceService {
 	public Map<String, Object> create(SourceForm f) {
 		LogSource s = new LogSource();
 		apply(s, f, true);
+		Map<String, Object> detected = autoMap(s, f.password());
 		validate(s);
-		return dto(sources.save(s));
+		Map<String, Object> out = dto(sources.save(s));
+		if (detected != null) out.put("autoDetected", detected);
+		return out;
 	}
 
 	public Map<String, Object> update(long id, SourceForm f) {
 		LogSource s = find(id);
 		boolean moved = changedLocation(s, f);
 		apply(s, f, false);
+		Map<String, Object> detected = autoMap(s, blank(f.password()) ? null : f.password());
 		validate(s);
 		if (moved) { // a different folder or query: start reading it afresh
 			fileStates.deleteBySource(id);
@@ -78,7 +84,9 @@ public class LogSourceService {
 			s.setFilesTracked(0);
 		}
 		s.setLastError(null);
-		return dto(sources.save(s));
+		Map<String, Object> out = dto(sources.save(s));
+		if (detected != null) out.put("autoDetected", detected);
+		return out;
 	}
 
 	public void delete(long id) {
@@ -103,7 +111,11 @@ public class LogSourceService {
 	/** Reads the source right now instead of waiting for the next pass. */
 	public Map<String, Object> scan(long id) {
 		LogSource s = find(id);
-		int n = LogSource.FOLDER.equals(s.getType()) ? tailer.poll(s) : poller.poll(s);
+		int n = switch (s.getType()) {
+		case LogSource.FOLDER -> tailer.poll(s);
+		case LogSource.FILE -> sheets.poll(s);
+		default -> poller.poll(s);
+		};
 		Map<String, Object> out = dto(find(id));
 		out.put("lastScanEvents", n);
 		return out;
@@ -143,6 +155,8 @@ public class LogSourceService {
 		try {
 			if (LogSource.FOLDER.equals(s.getType())) {
 				out.putAll(testFolder(s));
+			} else if (LogSource.FILE.equals(s.getType())) {
+				out.putAll(sheets.preview(s));
 			} else {
 				out.putAll(poller.preview(s, password));
 			}
@@ -152,6 +166,51 @@ public class LogSourceService {
 			out.put("error", e.getMessage() == null ? e.toString() : e.getMessage());
 		}
 		return out;
+	}
+
+	/** Looks through a database for tables that hold logs and works out their columns. */
+	public Map<String, Object> discover(SourceForm f, Long existingId) {
+		LogSource s = new LogSource();
+		apply(s, f, true);
+		String password = f.password();
+		if ((password == null || password.isEmpty()) && existingId != null) {
+			s.setPasswordEnc(find(existingId).getPasswordEnc());
+			password = null;
+		}
+		Map<String, Object> out = new LinkedHashMap<>();
+		try {
+			out.putAll(poller.discover(s, password));
+			out.put("ok", true);
+		} catch (Exception e) {
+			out.put("ok", false);
+			out.put("error", e.getMessage() == null ? e.toString() : e.getMessage());
+		}
+		return out;
+	}
+
+	/**
+	 * When a database or file source is saved without the essential columns mapped, they are worked out from
+	 * the data. Returns what was filled in, or null when nothing was needed.
+	 */
+	private Map<String, Object> autoMap(LogSource s, String password) {
+		if (LogSource.FOLDER.equals(s.getType())) return null;
+		boolean needed = blank(s.getTsColumn()) || (blank(s.getMessageColumn()) && blank(s.getRawColumn()));
+		if (!needed) return null;
+		if (LogSource.DATABASE.equals(s.getType()) && blank(s.getQueryText())) return null;
+		if (LogSource.FILE.equals(s.getType()) && blank(s.getPath())) return null;
+		try {
+			Map<String, Object> preview = LogSource.FILE.equals(s.getType()) ? sheets.preview(s)
+					: poller.preview(s, password);
+			@SuppressWarnings("unchecked")
+			Map<String, String> m = (Map<String, String>) preview.get("suggested");
+			DatabasePoller.applyMapping(s, m);
+			if (LogSource.FILE.equals(s.getType()) && blank(s.getQueryText()) && preview.get("sheet") != null) {
+				s.setQueryText((String) preview.get("sheet"));
+			}
+			return m.isEmpty() ? null : new LinkedHashMap<>(m);
+		} catch (Exception e) {
+			throw new IllegalArgumentException("Could not read the columns automatically: " + (e.getMessage() == null ? e : e.getMessage()));
+		}
 	}
 
 	public Map<String, Object> summary() {
@@ -226,11 +285,11 @@ public class LogSourceService {
 
 	private void apply(LogSource s, SourceForm f, boolean creating) {
 		String type = f.type() == null ? LogSource.FOLDER : f.type().toUpperCase(Locale.ROOT);
-		if (!LogSource.FOLDER.equals(type) && !LogSource.DATABASE.equals(type)) {
+		if (!LogSource.FOLDER.equals(type) && !LogSource.DATABASE.equals(type) && !LogSource.FILE.equals(type)) {
 			throw new IllegalArgumentException("Unknown source type: " + f.type());
 		}
 		s.setType(type);
-		s.setName(blank(f.name()) ? (LogSource.FOLDER.equals(type) ? "Log folder" : "Log database") : f.name().trim());
+		s.setName(blank(f.name()) ? defaultName(type, f.path()) : f.name().trim());
 		if (f.enabled() != null) s.setEnabled(f.enabled());
 		s.setPath(trim(f.path()));
 		s.setFilePattern(blank(f.filePattern()) ? "*.log" : f.filePattern().trim());
@@ -258,15 +317,29 @@ public class LogSourceService {
 		s.setPollSeconds(f.pollSeconds() == null ? 15 : Math.max(5, Math.min(f.pollSeconds(), 3600)));
 	}
 
+	private static String defaultName(String type, String path) {
+		if (LogSource.FILE.equals(type) && !blank(path)) {
+			String n = Path.of(path.trim()).getFileName().toString();
+			return n.length() > 120 ? n.substring(0, 120) : n;
+		}
+		return LogSource.FOLDER.equals(type) ? "Log folder" : LogSource.FILE.equals(type) ? "Spreadsheet" : "Log database";
+	}
+
 	/** Checks a source is complete before it is saved (testing works on incomplete drafts). */
 	private static void validate(LogSource s) {
 		if (LogSource.FOLDER.equals(s.getType())) {
 			if (blank(s.getPath())) throw new IllegalArgumentException("Choose the folder that contains the log files");
 			return;
 		}
+		if (LogSource.FILE.equals(s.getType())) {
+			if (blank(s.getPath())) throw new IllegalArgumentException("Choose the Excel workbook or CSV file");
+			if (!TabularReader.supports(Path.of(s.getPath()))) throw new IllegalArgumentException("Choose an Excel workbook (.xlsx, .xls) or a CSV file");
+			if (blank(s.getMessageColumn()) && blank(s.getRawColumn())) throw new IllegalArgumentException("No column with log messages was found; choose it under Columns");
+			return;
+		}
 		if (blank(s.getQueryText())) throw new IllegalArgumentException("Enter a table name or a SELECT query");
-		if (blank(s.getTsColumn())) throw new IllegalArgumentException("Map the timestamp column");
-		if (blank(s.getMessageColumn()) && blank(s.getRawColumn())) throw new IllegalArgumentException("Map a message column (or a raw log line column)");
+		if (blank(s.getTsColumn()) && blank(s.getIdColumn())) throw new IllegalArgumentException("No date/time column was found; choose it under Columns");
+		if (blank(s.getMessageColumn()) && blank(s.getRawColumn())) throw new IllegalArgumentException("No column with log messages was found; choose it under Columns");
 	}
 
 	private static boolean changedLocation(LogSource s, SourceForm f) {
@@ -308,7 +381,8 @@ public class LogSourceService {
 		m.put("rawColumn", s.getRawColumn());
 		m.put("idColumn", s.getIdColumn());
 		m.put("pollSeconds", s.getPollSeconds());
-		m.put("location", LogSource.FOLDER.equals(s.getType()) ? s.getPath() + "  (" + s.getFilePattern() + ")" : safeUrl(s));
+		m.put("location", LogSource.FOLDER.equals(s.getType()) ? s.getPath() + "  (" + s.getFilePattern() + ")"
+				: LogSource.FILE.equals(s.getType()) ? s.getPath() + (blank(s.getQueryText()) ? "" : "  (sheet " + s.getQueryText() + ")") : safeUrl(s));
 		m.put("lastRunAt", epoch(s.getLastRunAt()));
 		m.put("lastSuccessAt", epoch(s.getLastSuccessAt()));
 		m.put("lastError", s.getLastError());

@@ -559,7 +559,7 @@ public class UniversalLogParser {
 	}
 
 	/** Parses ISO-8601-ish timestamps; zoned values are converted to server-local time. */
-	static LocalDateTime parseTimestamp(String raw) {
+	public static LocalDateTime parseTimestamp(String raw) {
 		if (raw == null || raw.isBlank()) {
 			return null;
 		}
