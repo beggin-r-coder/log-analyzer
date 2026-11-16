@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Download Log Analyzer</title>
+	<link rel="icon" type="image/svg+xml" href="favicon.svg">
+	<style>
+		:root { --bg: #f6f7fb; --card: #fff; --text: #0f172a; --dim: #64748b; --line: #e2e8f0; --accent: #4f46e5; --accent-2: #6366f1; color-scheme: light dark; }
+		@media (prefers-color-scheme: dark) { :root { --bg: #0b0d12; --card: #14171d; --text: #e6e9ef; --dim: #9aa1ad; --line: #262a33; --accent: #818cf8; --accent-2: #6366f1; } }
+		* { box-sizing: border-box; }
+		body { margin: 0; font: 15px/1.55 Inter, "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+		a { color: var(--accent); }
+		.wrap { max-width: 940px; margin: 0 auto; padding: 40px 22px 60px; }
+		header { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
+		header svg { flex-shrink: 0; }
+		header b { font-size: 18px; }
+		header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
+		h1 { font-size: 34px; letter-spacing: -.02em; margin: 0 0 8px; }
+		.lead { color: var(--dim); font-size: 16.5px; margin: 0 0 6px; max-width: 680px; }
+		.meta { color: var(--dim); font-size: 13px; min-height: 20px; margin-bottom: 26px; }
+		.hero { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 26px; border-radius: 18px; background: var(--card); border: 1px solid var(--line);
+			box-shadow: 0 20px 50px -30px rgba(15, 23, 42, .35); margin-bottom: 22px; }
+		.hero .txt { flex: 1; min-width: 260px; }
+		.hero h2 { margin: 0 0 4px; font-size: 21px; }
+		.hero p { margin: 0; color: var(--dim); font-size: 14px; }
+		.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 12px; font-weight: 600; text-decoration: none; white-space: nowrap;
+			background: linear-gradient(135deg, var(--accent-2), #4338ca); color: #fff; box-shadow: 0 10px 24px -10px rgba(79, 70, 229, .7); transition: transform .15s, box-shadow .15s; }
+		.btn:hover { transform: translateY(-1px); box-shadow: 0 14px 30px -10px rgba(79, 70, 229, .8); }
+		.btn small { font-weight: 500; opacity: .8; }
+		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; }
+		.opt { display: flex; flex-direction: column; gap: 6px; padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); text-decoration: none; color: var(--text);
+			transition: border-color .15s, transform .15s; }
+		.opt:hover { border-color: var(--accent); transform: translateY(-1px); }
+		.opt b { font-size: 15.5px; }
+		.opt span { color: var(--dim); font-size: 13.5px; }
+		.opt em { font-style: normal; font-size: 12.5px; color: var(--accent); font-weight: 600; margin-top: auto; padding-top: 6px; }
+		.ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); margin-bottom: 4px; }
+		h3 { margin: 34px 0 10px; font-size: 16px; }
+		ol, ul { padding-left: 20px; margin: 0; color: var(--dim); font-size: 14px; }
+		li { margin: 5px 0; }
+		li b, li code { color: var(--text); }
+		code { font: 12.5px "JetBrains Mono", Consolas, monospace; background: color-mix(in srgb, var(--dim) 14%, transparent); padding: 1px 5px; border-radius: 5px; }
+		.note { margin-top: 26px; padding: 14px 16px; border-radius: 12px; font-size: 13.5px; color: var(--dim); border: 1px dashed var(--line); }
+	</style>
+</head>
+<body>
+	<div class="wrap">
+		<header>
+			<svg width="30" height="30" viewBox="0 0 22 22" aria-hidden="true"><rect width="22" height="22" rx="6" fill="#4f46e5"/><path d="M5 12.5h2.6l2-5 2.8 8 2-4.5H17" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+			<b>Log Analyzer</b>
+			<nav><a href="./">Live demo</a><a href="https://github.com/beggin-r-coder/log-analyzer">GitHub</a></nav>
+		</header>
+
+		<h1>Download Log Analyzer</h1>
+		<p class="lead">Log analytics for Siebel CRM and banking services that runs on your own Windows laptop: no cloud, no server, no installation needed.</p>
+		<div class="meta" id="meta"></div>
+
+		<div class="hero">
+			<div class="txt">
+				<h2>LogAnalyzer.exe</h2>
+				<p>One file, nothing to install. Double-click and it runs: Java is included, no admin rights needed. The first start takes a few seconds to get ready.</p>
+			</div>
+			<a class="btn" id="dlExe" href="https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer.exe">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>
+				Download for Windows <small id="exeSize"></small>
+			</a>
+		</div>
+
+		<div class="grid">
+			<a class="opt" href="https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer-Setup.msi">
+				<div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></div>
+				<b>Installer (.msi)</b><span>Adds a Start-menu entry and a desktop shortcut. Installs for your user only, no admin rights.</span><em>LogAnalyzer-Setup.msi <span data-size="LogAnalyzer-Setup.msi"></span></em>
+			</a>
+			<a class="opt" href="https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer-portable.zip">
+				<div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+				<b>Portable folder (.zip)</b><span>The same app as a folder. Unzip anywhere, even a USB stick, and run <code>LogAnalyzer\LogAnalyzer.exe</code>.</span><em>LogAnalyzer-portable.zip <span data-size="LogAnalyzer-portable.zip"></span></em>
+			</a>
+			<a class="opt" href="https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer-eclipse-offline.zip">
+				<div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg></div>
+				<b>Eclipse project (offline)</b><span>The source with every library included. Import into Eclipse and run, no Maven or internet access needed.</span><em>LogAnalyzer-eclipse-offline.zip <span data-size="LogAnalyzer-eclipse-offline.zip"></span></em>
+			</a>
+			<a class="opt" id="dlSource" href="https://github.com/beggin-r-coder/log-analyzer/archive/refs/tags/latest-build.zip">
+				<div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M10 13l-2 2 2 2M14 13l2 2-2 2"/></svg></div>
+				<b>Source code (.zip)</b><span>The Maven project, for IntelliJ, VS Code, Eclipse with Maven, or the command line (<code>mvnw spring-boot:run</code>).</span><em>Source code</em>
+			</a>
+		</div>
+
+		<h3>Which one should I pick?</h3>
+		<ul>
+			<li><b>Just want to use it:</b> <code>LogAnalyzer.exe</code>.</li>
+			<li><b>Want it in the Start menu:</b> the installer.</li>
+			<li><b>Want to run or change the code in Eclipse on a work laptop:</b> the offline Eclipse project. In Eclipse use <i>File → Import → General → Existing Projects into Workspace</i>, then run <i>Log Analyzer - desktop app</i> from the Run menu.</li>
+			<li><b>Developer with Maven access:</b> the source code.</li>
+		</ul>
+
+		<h3>First start</h3>
+		<ol>
+			<li>Windows SmartScreen may say the app is from an unknown publisher, because it is not code-signed. Click <b>More info → Run anyway</b>.</li>
+			<li>Log Analyzer opens in its own window and asks where your logs are: a Siebel log folder, a database (Oracle, SQL Server, PostgreSQL, MySQL), or an Excel / CSV file. Or try it with sample Siebel logs.</li>
+			<li>It keeps running in the system tray. Use <b>Quit</b> in the app or the tray menu to stop it.</li>
+		</ol>
+
+		<div class="note">All downloads come from the <a href="https://github.com/beggin-r-coder/log-analyzer/releases/latest">latest release</a>, which is rebuilt and tested on Windows every time the code changes.
+			Older versions are on the <a href="https://github.com/beggin-r-coder/log-analyzer/releases">Releases page</a>.</div>
+	</div>
+	<script>
+		// version, date and file sizes of the latest release (works without it too)
+		fetch('https://api.github.com/repos/beggin-r-coder/log-analyzer/releases/latest').then((r) => (r.ok ? r.json() : null)).then((rel) => {
+			if (!rel) return;
+			const mb = (b) => (b / 1048576).toFixed(0) + ' MB';
+			const when = new Date(rel.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+			document.getElementById('meta').textContent = `${rel.name} · published ${when}`;
+			(rel.assets || []).forEach((a) => {
+				if (a.name === 'LogAnalyzer.exe') document.getElementById('exeSize').textContent = '· ' + mb(a.size);
+				document.querySelectorAll(`[data-size="${a.name}"]`).forEach((el) => { el.textContent = '· ' + mb(a.size); });
+			});
+			if (rel.zipball_url && rel.tag_name) document.getElementById('dlSource').href = `https://github.com/beggin-r-coder/log-analyzer/archive/refs/tags/${rel.tag_name}.zip`;
+		}).catch(() => {});
+	</script>
+</body>
+</html>

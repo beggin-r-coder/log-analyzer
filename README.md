@@ -4,6 +4,22 @@ A Spring Boot + H2 log analytics dashboard for a fictional bank (**NovaBank**).
 Logs are written to a persistent H2 database, parsed from many real-world formats,
 classified into BFSI incident categories, and shown on a live dashboard.
 
+## Download
+
+**[⬇ Download page](https://beggin-r-coder.github.io/log-analyzer/download.html)** or straight from the
+[latest release](https://github.com/beggin-r-coder/log-analyzer/releases/latest):
+
+| Download | What it is |
+|---|---|
+| **[LogAnalyzer.exe](https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer.exe)** | One file, nothing to install: double-click and it runs (Java included). |
+| [LogAnalyzer-Setup.msi](https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer-Setup.msi) | Installer with Start-menu entry and desktop shortcut (per user, no admin rights). |
+| [LogAnalyzer-portable.zip](https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer-portable.zip) | The app as a folder. |
+| [LogAnalyzer-eclipse-offline.zip](https://github.com/beggin-r-coder/log-analyzer/releases/latest/download/LogAnalyzer-eclipse-offline.zip) | Source as an Eclipse project with every library included (*Import → Existing Projects into Workspace*; no Maven or internet needed). |
+| [Source code](https://github.com/beggin-r-coder/log-analyzer/releases/latest) | The Maven project (zip / tar.gz on the release page). |
+
+Every push rebuilds these on Windows, starts the app and checks it with sample Siebel logs, then replaces the
+*latest build* release, so the links above always give the newest tested version.
+
 ## Quick demo
 
 **On your laptop** (needs Java 17+):
