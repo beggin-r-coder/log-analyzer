@@ -97,6 +97,9 @@ public final class DesktopLauncher {
 			System.setProperty("DATA_DIR", home.resolve("data").toString());
 			System.setProperty("server.port", String.valueOf(p));
 
+			// Spring DevTools (on the classpath when run from an IDE) would restart the app on a new thread, without the
+			// window, tray and single-instance lock set up here: the desktop app is never restarted that way
+			System.setProperty("spring.devtools.restart.enabled", "false");
 			SpringApplication app = new SpringApplication(LogAnalyzerApplication.class);
 			app.setAdditionalProfiles("desktop");
 			app.setHeadless(!ui);
@@ -121,6 +124,9 @@ public final class DesktopLauncher {
 			}
 			System.out.println("Log Analyzer is running at " + url);
 		} catch (Throwable e) {
+			if (e.getClass().getName().endsWith("SilentExitException")) {
+				throw (RuntimeException) e; // DevTools' own restart signal, not an error
+			}
 			fail(e, home, ui);
 		} finally {
 			if (splash != null) splash.dispose();
