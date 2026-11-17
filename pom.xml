@@ -67,6 +67,22 @@
 			<artifactId>mysql-connector-j</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+		<!-- Apache Derby: database files on this computer (jdbc:derby:path) and Derby network servers (jdbc:derby://host:1527/db) -->
+		<dependency>
+			<groupId>org.apache.derby</groupId>
+			<artifactId>derby</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.derby</groupId>
+			<artifactId>derbytools</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.derby</groupId>
+			<artifactId>derbyclient</artifactId>
+			<scope>runtime</scope>
+		</dependency>
 		<!-- Excel workbooks (.xlsx / .xls) as log sources -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>

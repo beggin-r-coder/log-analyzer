@@ -43,7 +43,16 @@ public class DatabasePoller {
 	private static final Pattern SYSTEM_SCHEMA = Pattern.compile("(?i)information_schema|pg_catalog|pg_toast|sys|system|mysql|performance_schema|"
 			+ "ctxsys|mdsys|xdb|ordsys|ordplugins|ordata|olapsys|outln|dbsnmp|appqossys|wmsys|exfsys|lbacsys|dvsys|gsmadmin_internal|"
 			+ "ojvmsys|audsys|apex_.*|flows_.*|si_informtn_schema|anonymous|xs\\$null|dbsfwuser|remote_scheduler_agent|gsmcatuser|"
-			+ "sysman|mgmt_view|db_owner|db_.*|guest");
+			+ "sysman|mgmt_view|db_owner|db_.*|guest|"
+			// Apache Derby
+			+ "sysibm|syscat|syscs_diag|syscs_util|sysfun|sysproc|sysstat|sqlj|nullid");
+
+	static {
+		// the embedded Derby engine writes derby.log into the working directory unless told otherwise
+		if (System.getProperty("derby.stream.error.file") == null) {
+			System.setProperty("derby.stream.error.file", java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "log-analyzer-derby.log").toString());
+		}
+	}
 
 	private final LogIngestionService ingestion;
 	private final SecretBox secrets;
@@ -349,6 +358,8 @@ public class DatabasePoller {
 				default -> "";
 				};
 		case "H2" -> "jdbc:h2:" + db;
+		// no host: a Derby database folder on this computer (embedded); with a host: a Derby network server
+		case "DERBY" -> notBlank(s.getHost()) ? "jdbc:derby://" + host + ":" + port(s, 1527) + "/" + db : "jdbc:derby:" + db;
 		default -> throw new IllegalArgumentException("Choose a database type or enter a JDBC URL");
 		};
 	}

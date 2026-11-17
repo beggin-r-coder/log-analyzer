@@ -81,8 +81,16 @@ public final class ConnectionHints {
 					+ "For a company database: connect the VPN, and check the port is right. Some office networks block "
 					+ "database ports to the internet; IT can open it or provide a gateway.";
 		}
+		if (has(m, "another instance of derby may have already booted", "xsdb6")) {
+			return "This Derby database is open in another program (embedded Derby lets only one program use it at a time). "
+					+ "Stop that program, or start a Derby network server for it and connect with a host and port (jdbc:derby://host:1527/name).";
+		}
+		if (has(m, "xj004", "database '") && has(m, "not found")) {
+			return "No Derby database at that location. For a database on this computer, enter the folder that contains it "
+					+ "(the folder with service.properties and seg0 inside), e.g. C:/apps/crm/logdb.";
+		}
 		if (has(m, "no suitable driver")) {
-			return "The JDBC URL isn't recognised. It should start with jdbc:sqlserver:, jdbc:oracle:thin:, jdbc:postgresql: or jdbc:mysql:.";
+			return "The JDBC URL isn't recognised. It should start with jdbc:oracle:thin:, jdbc:sqlserver:, jdbc:postgresql:, jdbc:mysql:, jdbc:derby: or jdbc:h2:.";
 		}
 		return null;
 	}
@@ -96,6 +104,7 @@ public final class ConnectionHints {
 		case "ORACLE" -> tls ? 1522 : 1521;
 		case "POSTGRES" -> 5432;
 		case "MYSQL" -> 3306;
+		case "DERBY" -> s.getHost() == null || s.getHost().isBlank() ? 0 : 1527;
 		default -> 0;
 		};
 	}

@@ -6,7 +6,7 @@
 	const esc = (s) => s == null ? '' : String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 	const nf = new Intl.NumberFormat('en-US');
 	const DESKTOP = !!window.APP_DESKTOP;
-	const PORTS = { SQLSERVER: 1433, ORACLE: 1521, POSTGRES: 5432, MYSQL: 3306 };
+	const PORTS = { SQLSERVER: 1433, ORACLE: 1521, POSTGRES: 5432, MYSQL: 3306, DERBY: 1527 };
 	const MAP_FIELDS = ['tsColumn', 'messageColumn', 'levelColumn', 'serviceColumn', 'traceColumn', 'hostColumn', 'rawColumn', 'idColumn'];
 	const ROLE_LABEL = { tsColumn: 'time', messageColumn: 'message', levelColumn: 'level', serviceColumn: 'component', traceColumn: 'trace', hostColumn: 'host', rawColumn: 'raw line', idColumn: 'id' };
 	const TYPE_LABEL = { FOLDER: 'FOLDER', FILE: 'EXCEL / CSV' };
@@ -138,7 +138,9 @@
 		document.querySelectorAll('.f-url').forEach((e) => { e.hidden = st.type !== 'DATABASE' || !custom; });
 		document.querySelectorAll('.f-hostport').forEach((e) => { e.hidden = st.type !== 'DATABASE' || custom || (h2 && !e.querySelector('[name=databaseName]')); });
 		form.elements.port.placeholder = PORTS[t] || '';
-		form.elements.databaseName.placeholder = t === 'ORACLE' ? 'service name, e.g. SBLPROD' : h2 ? 'file path, e.g. C:/data/logs' : 'database name';
+		form.elements.databaseName.placeholder = t === 'ORACLE' ? 'service name, e.g. SBLPROD' : h2 ? 'file path, e.g. C:/data/logs'
+			: t === 'DERBY' ? 'database folder, e.g. C:/apps/crm/logdb (or its name on a Derby server)' : 'database name';
+		form.elements.host.placeholder = t === 'DERBY' ? 'empty for a database folder on this computer' : 'db-server.bank.local';
 	}
 	form.elements.dbType.addEventListener('change', syncDbType);
 

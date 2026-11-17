@@ -90,7 +90,9 @@ publishing anything. Charts and PDF export are bundled, so the app works on mach
   saved so restarts continue where they stopped, rotated files are read again, and a still-growing event (multi-line
   SQL) is held back until it is complete. The Siebel header of each file is applied even when reading from the middle.
   On first scan, files not changed within the chosen history window are only followed from then on.
-- **Database:** SQL Server, Oracle, PostgreSQL or MySQL (drivers included), or any JDBC URL. Use a read-only account.
+- **Database:** Oracle, SQL Server, PostgreSQL, MySQL or Apache Derby (drivers included), or a JDBC URL for one of them. Derby works
+  both as a database folder on this computer (`jdbc:derby:C:/apps/crm/logdb`, leave Host empty; the folder must not be
+  open in another program) and as a network server (`jdbc:derby://host:1527/name`). Use a read-only account.
   - **Find log tables:** after entering the connection, Log Analyzer looks through the database itself (likely names
     such as `*_LOG`, `S_SRM_REQUEST`, `S_AUDIT_ITEM` first), reads a sample of rows from each table and ranks the ones
     that hold logs, so customer or lookup tables are left out. Pick one, or type a table name or a SELECT.
