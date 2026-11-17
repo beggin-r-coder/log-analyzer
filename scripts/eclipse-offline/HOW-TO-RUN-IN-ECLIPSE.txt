@@ -1,0 +1,21 @@
+Log Analyzer - offline Eclipse project
+======================================
+All libraries are already in the lib folder: no Maven, no downloads, no internet needed.
+
+1. Unzip this file. You get a folder called log-analyzer.
+2. Eclipse: File > Import > General > Existing Projects into Workspace > Next.
+   (NOT "Existing Maven Projects".)
+3. Select root directory: the log-analyzer folder. Tick it, click Finish.
+   If an older log-analyzer project is already in Eclipse, delete it first
+   (right-click > Delete, without deleting the files on disk) or Eclipse refuses the import.
+4. Wait a few seconds for the bottom-right "Building" progress to finish.
+5. Run > Run Configurations... (or the small arrow next to the green Run button):
+     "Log Analyzer - desktop app"            -> opens the app window, like LogAnalyzer.exe
+     "Log Analyzer - web (localhost 8080)"   -> open http://localhost:8080 in the browser;
+                                                 user admin, password printed in the Console
+   You can also right-click LogAnalyzerApplication.java > Run As > Java Application
+   (add --desktop under Arguments > Program arguments for the desktop window).
+
+Needs a JDK 17 or newer: Window > Preferences > Java > Installed JREs.
+If Eclipse says the project needs "JavaSE-17": right-click the project > Properties >
+Java Build Path > Libraries > JRE System Library > Edit > choose your JDK.

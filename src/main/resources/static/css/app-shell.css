@@ -1,0 +1,113 @@
+/* Log Analyzer desktop app window: sidebar, toolbar, one screen at a time, status bar. */
+body.app { overflow: hidden; height: 100vh; }
+body.app > .topbar, body.app > .container, body.app #demoTour, body.app #incidentBanner { display: none !important; }
+body.app .app-loader { z-index: 400; }
+
+.app-shell { display: grid; grid-template-columns: 228px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 30px; height: 100vh; background: var(--bg); }
+
+/* sidebar */
+.app-side { display: flex; flex-direction: column; gap: 6px; padding: 14px 10px 10px; background: var(--surface); border-right: 1px solid var(--line); user-select: none; min-height: 0; }
+.app-brand { display: flex; align-items: center; gap: 11px; padding: 6px 10px 18px; }
+.app-logo svg { width: 30px; height: 30px; display: block; }
+.app-logo rect { fill: var(--ink); }
+.app-logo path { stroke: var(--surface); }
+.app-brand-text { min-width: 0; line-height: 1.15; }
+.app-brand-text b { display: block; font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; }
+.app-brand-text small { display: block; font-size: 11.5px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-nav { display: flex; flex-direction: column; gap: 2px; }
+.app-side-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+.app-nav-item { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; border: 0; border-radius: 9px; background: none;
+	font: inherit; font-size: 13.5px; font-weight: 500; color: var(--text-dim); cursor: pointer; text-align: left; transition: background .12s ease, color .12s ease; }
+.app-nav-item svg { flex: none; opacity: .85; }
+.app-nav-item:hover { background: var(--hover); color: var(--text); }
+.app-nav-item.active { background: var(--surface-3); color: var(--text); font-weight: 600; }
+.app-nav-item.active::before { content: ""; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.app-nav-item.active svg { opacity: 1; color: var(--accent); }
+.app-nav-item.quiet { color: var(--text-faint); }
+.app-nav-item:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -2px; }
+.app-badge { margin-left: auto; font-style: normal; font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px;
+	display: inline-grid; place-items: center; background: var(--surface-3); color: var(--text-dim); border: 1px solid var(--line); }
+.app-badge.hot { background: #e11d48; border-color: #e11d48; color: #fff; }
+.app-dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: #d97706; }
+.app-badge[hidden], .app-dot[hidden] { display: none; }
+
+/* main area */
+.app-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.app-toolbar { flex: none; height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 24px;
+	background: var(--surface); border-bottom: 1px solid var(--line); user-select: none; }
+.app-title { min-width: 0; }
+.app-title h1 { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+.app-title p { font-size: 12px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-tools { display: flex; align-items: center; gap: 8px; flex: none; }
+.app-tools [hidden] { display: none !important; }
+.app-tools #appRefresh.spin svg { animation: app-spin .6s ease; }
+@keyframes app-spin { to { transform: rotate(360deg); } }
+.app-views { flex: 1; min-height: 0; overflow: auto; padding: 20px 24px 28px; }
+.app-view[hidden] { display: none; }
+.app-view.enter { animation: app-enter .2s ease both; }
+@keyframes app-enter { from { opacity: 0; transform: translateY(6px); } }
+.app-view > .grid { margin: 0; }
+.app-view .card { opacity: 1; transform: none; animation: none; }
+/* a screen's own widget is always shown, whatever was hidden in Customize */
+.app-view:not([data-view="overview"]) [data-widget].w-hidden { display: block !important; }
+.app-view:not([data-view="overview"]) .w-remove { display: none !important; }
+/* full-height screens */
+.app-view[data-view="logs"] .table-wrap.explorer { max-height: calc(100vh - 372px); }
+.app-view[data-view="live"] #feed { max-height: calc(100vh - 300px); height: calc(100vh - 300px); }
+.app-view[data-view="incidents"] .inc-list { max-height: calc(100vh - 330px); }
+
+/* overview: the SLA table takes the room of the payments impact panel (hidden by default in the app) */
+.app-view[data-view="overview"] [data-widget="sla"] { grid-column: span 8; }
+@media (max-width: 1180px) { .app-view[data-view="overview"] [data-widget="sla"] { grid-column: span 12; } }
+
+/* status bar */
+.app-status { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; padding: 0 10px; font-size: 12px; color: var(--text-dim);
+	background: var(--surface); border-top: 1px solid var(--line); user-select: none; white-space: nowrap; overflow: hidden; }
+.app-status .st-item { display: inline-flex; align-items: center; gap: 7px; padding: 3px 9px; border-radius: 6px; border: 0; background: none; font: inherit; color: inherit; }
+.app-status button.st-item { cursor: pointer; }
+.app-status button.st-item:hover { background: var(--hover); color: var(--text); }
+.app-status .st-spacer { flex: 1; }
+.app-status .st-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+.app-status .st-dot.ok { background: #16a34a; }
+.app-status .st-dot.warn { background: #d97706; }
+.app-status .st-dot.bad { background: #e11d48; }
+.app-status .live-status { font-size: 12px; padding: 3px 9px; }
+.app-status .live-status .timestamp { font-size: 11.5px; }
+
+/* settings */
+.set-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-width: 1180px; }
+.set-card { padding: 20px 22px; }
+.set-card.wide { grid-column: 1 / -1; }
+.set-card h3 { font-size: 14.5px; font-weight: 650; }
+.set-card p { font-size: 13px; color: var(--text-dim); margin: 4px 0 14px; line-height: 1.5; }
+.set-card .seg button { padding: 7px 14px; }
+.set-card h3 + .set-dl { margin-top: 14px; }
+.set-dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px 16px; font-size: 13px; align-items: center; }
+.set-dl dt { color: var(--text-faint); font-weight: 500; }
+.set-dl dd { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.set-dl code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--surface-3); padding: 4px 8px; border-radius: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* sources screen inside the app */
+.app-view[data-view="sources"] .src-welcome { margin-top: 0; }
+
+/* app feel */
+body.app .card-head, body.app .kpi-label, body.app .chip, body.app .btn { user-select: none; }
+body.app ::-webkit-scrollbar { width: 11px; height: 11px; }
+body.app ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+body.app ::-webkit-scrollbar-thumb:hover { background-color: var(--text-faint); }
+body.app ::-webkit-scrollbar-track { background: transparent; }
+body.app.app-quitting .app-shell { opacity: .35; transition: opacity .3s ease; pointer-events: none; }
+
+/* narrow windows: icon-only sidebar */
+@media (max-width: 980px) {
+	.app-shell { grid-template-columns: 64px minmax(0, 1fr); }
+	.app-brand { justify-content: center; padding: 6px 0 16px; }
+	.app-brand-text, .app-nav-item span { display: none; }
+	.app-nav-item { justify-content: center; padding: 10px 0; }
+	.app-badge { position: absolute; top: 2px; right: 4px; min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
+	.app-dot { position: absolute; top: 6px; right: 12px; }
+	.app-title p { display: none; }
+	.set-grid { grid-template-columns: 1fr; }
+	.app-views { padding: 16px; }
+	#stRate { display: none; }
+}

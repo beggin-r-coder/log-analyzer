@@ -1,0 +1,238 @@
+# Builds the Windows desktop app on a Windows machine, starts it and checks it works, then publishes:
+#   LogAnalyzer.exe   one file, nothing to install: double-click and it runs (Java included)
+#   portable zip      the same app as a folder
+#   .msi              optional per-user installer with Start menu entry
+#   LogAnalyzer-eclipse-offline.zip   the source as an Eclipse project with every library included (no Maven needed)
+# and publishes them on the repository's Releases page: every push updates the "Latest build" release (stable
+# download links, no sign-in), and v* tags get a versioned release. GitHub adds the source code zip itself.
+name: Windows app
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# one release update at a time; a newer push replaces the release of an older one
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_VERSION: 1.0.0
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build and run the tests (on Windows)
+        run: ./mvnw.cmd -B -ntp package
+
+      - name: Package LogAnalyzer.exe (portable, Java included)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force target/jpackage-input | Out-Null
+          Copy-Item "target/log-analyzer-$env:APP_VERSION.jar" target/jpackage-input/log-analyzer.jar
+          jpackage --type app-image --name LogAnalyzer --app-version $env:APP_VERSION `
+            --vendor "Log Analyzer" --description "Log analytics for Siebel CRM and banking services" `
+            --input target/jpackage-input --main-jar log-analyzer.jar `
+            --icon packaging/windows/LogAnalyzer.ico `
+            --java-options "-Dapp.launch=desktop" --java-options "-Xmx768m" --java-options "-Dfile.encoding=UTF-8" `
+            --dest dist
+          Compress-Archive -Path dist/LogAnalyzer -DestinationPath "dist/LogAnalyzer-$env:APP_VERSION-portable.zip"
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - name: Build the single-file LogAnalyzer.exe (no installation)
+        shell: pwsh
+        run: |
+          # a small launcher compiled with the C# compiler that comes with Windows, with the app appended to it
+          $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          "static class AppVersion { public const string Value = `"$env:APP_VERSION`"; }" | Set-Content target/AppVersion.cs
+          # csc.exe reads "/" as the start of an option, so paths use backslashes
+          & $csc /nologo /optimize+ /target:winexe /out:target\launcher.exe /win32icon:packaging\windows\LogAnalyzer.ico `
+            /r:System.IO.Compression.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll `
+            packaging\windows\launcher\Launcher.cs target\AppVersion.cs
+          if ($LASTEXITCODE -ne 0) { throw 'The launcher did not compile' }
+
+          $zip = "dist/LogAnalyzer-$env:APP_VERSION-portable.zip"
+          $out = [IO.File]::Create((Join-Path $PWD 'dist/LogAnalyzer.exe'))
+          try {
+            foreach ($part in @('target/launcher.exe', $zip)) {
+              $in = [IO.File]::OpenRead((Join-Path $PWD $part)); $in.CopyTo($out); $in.Dispose()
+            }
+            $len = (Get-Item $zip).Length
+            $out.Write([BitConverter]::GetBytes([long]$len), 0, 8)
+            $magic = [Text.Encoding]::ASCII.GetBytes('LAPAYLD1'); $out.Write($magic, 0, 8)
+          } finally { $out.Dispose() }
+          Get-Item dist/LogAnalyzer.exe | Format-Table Name, Length
+
+      - name: Start the single LogAnalyzer.exe and check it works
+        shell: pwsh
+        run: |
+          $appHome = Join-Path $env:LOCALAPPDATA 'LogAnalyzer'
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $app = Start-Process -FilePath dist/LogAnalyzer.exe -ArgumentList '--no-window' -PassThru
+          $file = Join-Path $appHome 'instance.properties'
+          for ($i = 0; $i -lt 120 -and -not (Test-Path $file); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path $file)) { Get-ChildItem -Recurse $appHome -Depth 2 | Select-Object -First 40 FullName; Get-Content (Join-Path $appHome 'logs/log-analyzer.log') -Tail 80 -ErrorAction SilentlyContinue; throw 'The app did not start' }
+          Write-Host "First start (unpacking included) took $([int]$sw.Elapsed.TotalSeconds) s"
+          $unpacked = Get-ChildItem (Join-Path $appHome 'app') -Directory
+          Write-Host "Unpacked into: $($unpacked.FullName)"
+          if (-not (Test-Path (Join-Path $unpacked[0].FullName '.complete'))) { throw 'The app was not unpacked completely' }
+          $props = Get-Content $file
+          $port = ($props | Where-Object { $_ -like 'port=*' }) -replace '^port=', ''
+          $enter = (($props | Where-Object { $_ -like 'url=*' }) -replace '^url=', '') -replace '\\', ''
+          $base = "http://127.0.0.1:$port"
+          Write-Host "Running on $base"
+
+          $health = Invoke-RestMethod "$base/actuator/health"
+          if ($health.status -ne 'UP') { throw "Health: $($health.status)" }
+
+          # without this run's token the API refuses
+          try { Invoke-WebRequest "$base/api/sources" -UseBasicParsing | Out-Null; throw 'API answered without the token' }
+          catch { if ($_.Exception.Response.StatusCode.value__ -ne 403) { throw } }
+
+          $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          Invoke-WebRequest $enter -WebSession $s -UseBasicParsing | Out-Null
+          $sample = Invoke-RestMethod -Method Post "$base/api/sources/sample" -WebSession $s
+          Write-Host "Sample Siebel logs in $($sample.path): $($sample.eventsIngested) events, $($sample.filesTracked) files"
+          Start-Sleep 8
+          $d = Invoke-RestMethod "$base/api/dashboard?range=24h" -WebSession $s
+          $services = ($d.services | ForEach-Object { $_.name }) -join ', '
+          Write-Host "Dashboard: $($d.totals.total) events from $services"
+          if ($d.totals.total -lt 100) { throw 'Too few events read from the sample Siebel logs' }
+          $src = Invoke-RestMethod "$base/api/sources" -WebSession $s
+          if ($src[0].status -ne 'RUNNING') { throw "Source status: $($src[0].status) $($src[0].lastError)" }
+
+          Invoke-RestMethod -Method Post "$base/api/desktop/quit" -WebSession $s | Out-Null
+          if (-not $app.WaitForExit(30000)) { throw 'The app did not quit' }
+          Write-Host 'Quit cleanly'
+
+          # second start: already unpacked, so it goes straight to the app
+          Remove-Item $file -ErrorAction SilentlyContinue
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $app = Start-Process -FilePath dist/LogAnalyzer.exe -ArgumentList '--no-window' -PassThru
+          for ($i = 0; $i -lt 120 -and -not (Test-Path $file); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path $file)) { throw 'The app did not start the second time' }
+          Write-Host "Second start took $([int]$sw.Elapsed.TotalSeconds) s"
+          $props = Get-Content $file
+          $port = ($props | Where-Object { $_ -like 'port=*' }) -replace '^port=', ''
+          $enter = (($props | Where-Object { $_ -like 'url=*' }) -replace '^url=', '') -replace '\\', ''
+          $s = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          Invoke-WebRequest $enter -WebSession $s -UseBasicParsing | Out-Null
+          Invoke-WebRequest "http://127.0.0.1:$port/vendor/chart.umd.min.js" -WebSession $s -UseBasicParsing | Out-Null
+          Invoke-RestMethod -Method Post "http://127.0.0.1:$port/api/desktop/quit" -WebSession $s | Out-Null
+          if (-not $app.WaitForExit(30000)) { throw 'The app did not quit the second time' }
+
+      - name: Build the .msi installer
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset --no-progress -y | Out-Null
+            $env:PATH += ";${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin"
+          }
+          jpackage --type msi --app-image dist/LogAnalyzer --name LogAnalyzer --app-version $env:APP_VERSION `
+            --vendor "Log Analyzer" --description "Log analytics for Siebel CRM and banking services" `
+            --win-per-user-install --win-menu --win-menu-group "Log Analyzer" --win-shortcut `
+            --win-upgrade-uuid 6b1f2a52-3c7e-4f7a-9a52-1d1c2f0e7a11 --dest dist
+          Get-ChildItem dist/*.msi | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LogAnalyzer-exe-${{ env.APP_VERSION }}
+          path: dist/LogAnalyzer.exe
+          compression-level: 0
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LogAnalyzer-windows-${{ env.APP_VERSION }}
+          path: |
+            dist/*.zip
+            dist/*.msi
+          if-no-files-found: error
+
+  eclipse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build the offline Eclipse project (all libraries included, checked to compile)
+        run: bash scripts/eclipse-offline/build.sh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LogAnalyzer-eclipse-offline
+          path: dist/LogAnalyzer-eclipse-offline.zip
+          compression-level: 0
+          if-no-files-found: error
+
+  release:
+    # publish only what was built and checked above, for pushes (not pull requests)
+    needs: [windows, eclipse]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Name the downloads
+        run: |
+          cd dist
+          for f in *.msi; do [ -e "$f" ] && mv "$f" LogAnalyzer-Setup.msi; done
+          for f in *-portable.zip; do [ -e "$f" ] && mv "$f" LogAnalyzer-portable.zip; done
+          ls -l
+
+      - name: Publish on the Releases page
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          files=$(ls dist/LogAnalyzer.exe dist/LogAnalyzer-Setup.msi dist/LogAnalyzer-portable.zip dist/LogAnalyzer-eclipse-offline.zip 2>/dev/null)
+          base="https://github.com/$GH_REPO/releases/latest/download"
+          cat > notes.md <<EOF
+          ## Downloads
+
+          | File | What it is |
+          |---|---|
+          | **[LogAnalyzer.exe]($base/LogAnalyzer.exe)** | **Recommended.** One file, nothing to install: double-click and it runs (Java included). |
+          | [LogAnalyzer-Setup.msi]($base/LogAnalyzer-Setup.msi) | Installer with a Start-menu entry and desktop shortcut (per user, no admin rights). |
+          | [LogAnalyzer-portable.zip]($base/LogAnalyzer-portable.zip) | The app as a folder: unzip and run \`LogAnalyzer\\LogAnalyzer.exe\`. |
+          | [LogAnalyzer-eclipse-offline.zip]($base/LogAnalyzer-eclipse-offline.zip) | Source as an Eclipse project with every library included: *File → Import → Existing Projects into Workspace*, no Maven or internet needed. |
+          | Source code (zip / tar.gz) | The Maven project, below. |
+
+          Windows SmartScreen may say the app is from an unknown publisher (it is not code-signed): *More info → Run anyway*.
+
+          Built from \`${GITHUB_SHA::7}\` on \`${GITHUB_REF_NAME}\`. Every build was started, fed sample Siebel logs and checked on Windows before it was published.
+          EOF
+          sed -i 's/^          //' notes.md
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            gh release create "$GITHUB_REF_NAME" $files --title "Log Analyzer $GITHUB_REF_NAME" --notes-file notes.md --latest
+          else
+            # the rolling "Latest build": replaced on every push, so the download links always give the newest app
+            gh release delete latest-build --cleanup-tag --yes 2>/dev/null || true
+            gh release create latest-build $files --target "$GITHUB_SHA" --title "Log Analyzer – latest build" --notes-file notes.md --latest
+          fi

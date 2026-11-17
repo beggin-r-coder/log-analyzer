@@ -1,0 +1,11 @@
+# Railway: New Project > Deploy from GitHub repo. Railway reads this file and the Dockerfile.
+# Add the variables listed in README > Deploy > Railway in the service's Variables tab.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/actuator/health"
+healthcheckTimeout = 180
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

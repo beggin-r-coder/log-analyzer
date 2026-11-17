@@ -1,0 +1,40 @@
+/* In-app dialogs (replace browser alert / confirm) */
+.ui-dialog-root { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; padding: 20px; }
+.ui-backdrop { position: absolute; inset: 0; background: rgba(15, 17, 21, .42); opacity: 0; transition: opacity .18s ease; }
+.ui-dialog { position: relative; width: min(440px, 100%); background: var(--surface); color: var(--text); border: 1px solid var(--line);
+	border-radius: 16px; box-shadow: 0 30px 80px -20px rgba(15, 17, 21, .45), 0 2px 8px rgba(15, 17, 21, .08); padding: 22px 22px 18px;
+	display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 16px; opacity: 0; transform: translateY(8px) scale(.97);
+	transition: opacity .18s ease, transform .22s cubic-bezier(.2, .9, .3, 1.2); }
+.ui-dialog-root.open .ui-backdrop { opacity: 1; }
+.ui-dialog-root.open .ui-dialog { opacity: 1; transform: none; }
+.ui-dialog-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--accent); background: var(--tint-accent-2); }
+.ui-dialog-icon svg { width: 22px; height: 22px; }
+.tone-danger .ui-dialog-icon, .ui-dialog-icon.tone-danger { color: #e11d48; background: rgba(225, 29, 72, .1); }
+.ui-dialog-body h2 { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; margin: 2px 0 6px; }
+.ui-dialog-body p { font-size: 13.5px; line-height: 1.55; color: var(--text-dim); white-space: pre-line; }
+.ui-dialog-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.ui-btn { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 9px; cursor: pointer; border: 1px solid var(--line-strong);
+	background: var(--surface); color: var(--text); transition: background .15s ease, border-color .15s ease, transform .1s ease; }
+.ui-btn:hover { background: var(--surface-3); }
+.ui-btn:active { transform: translateY(1px); }
+.ui-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 2px; }
+.ui-btn.primary { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.ui-btn.primary:hover { opacity: .9; }
+.ui-btn.danger { background: #e11d48; border-color: #e11d48; color: #fff; }
+.ui-btn.danger:hover { background: #be123c; }
+[data-theme="dark"] .ui-backdrop { background: rgba(0, 0, 0, .55); }
+[data-theme="dark"] .ui-dialog { box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .8); }
+[data-theme="dark"] .ui-btn.danger { background: #e5484d; border-color: #e5484d; }
+[data-theme="dark"] .tone-danger .ui-dialog-icon, [data-theme="dark"] .ui-dialog-icon.tone-danger { color: #f0787c; background: rgba(229, 72, 77, .14); }
+
+/* desktop app: the local server stopped answering */
+.ui-offline { position: fixed; inset: 0; z-index: 290; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--bg) 82%, transparent);
+	backdrop-filter: blur(6px); opacity: 0; transition: opacity .25s ease; }
+.ui-offline.open { opacity: 1; }
+.ui-offline-card { width: min(460px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 28px; text-align: center;
+	box-shadow: 0 30px 80px -24px rgba(15, 17, 21, .4); }
+.ui-offline-card .ui-dialog-icon { margin: 0 auto 14px; width: 52px; height: 52px; border-radius: 14px; }
+.ui-offline-card h2 { font-size: 18px; font-weight: 650; }
+.ui-offline-card p { font-size: 13.5px; line-height: 1.6; color: var(--text-dim); margin-top: 8px; }
+.ui-offline-card .ui-dialog-actions { justify-content: center; }
+.ui-offline-state { display: block; margin-top: 12px; min-height: 16px; font-size: 12px; color: var(--text-faint); }

@@ -1,22 +1,17 @@
 package com.anishka.log_analyzer.exception;
 
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.ControllerAdvice;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import java.util.Map;
 
-@ControllerAdvice
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice(basePackages = "com.anishka.log_analyzer.controller")
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public String handleFileSizeException(
-            MaxUploadSizeExceededException ex,
-            Model model) {
-
-        model.addAttribute(
-                "error",
-                "File size exceeded the allowed limit.");
-
-        return "error-page";
-    }
+	@ExceptionHandler(IllegalArgumentException.class)
+	public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException ex) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", ex.getMessage()));
+	}
 }
